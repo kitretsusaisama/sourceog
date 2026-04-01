@@ -1,0 +1,68 @@
+# Dependencies (up to 6 levels deep)
+node_modules/
+*/node_modules/
+*/*/node_modules/
+*/*/*/node_modules/
+*/*/*/*/node_modules/
+*/*/*/*/*/node_modules/
+*/*/*/*/*/*/node_modules/
+
+# Dot-folders (up to 6 levels deep)
+.*/
+*/.*/
+*/*/.*/
+*/*/*/.*/
+*/*/*/*/.*/
+*/*/*/*/*/.*/
+*/*/*/*/*/*/.*/
+*/node_modules/
+
+# Build outputs
+dist/
+out/
+build/
+
+# SourceOG build artifacts
+.sourceog/
+**/.sourceog/
+
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Test & coverage
+coverage/
+.tmp-tests/
+*.log
+vitest.log
+y.log
+
+# Temp / debug files
+.tmp-*/
+*.tmp
+.tmp-debug-*.mjs
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# pnpm
+.pnpm-store/
+
+# Vercel
+.vercel/
+
+# Cloudflare
+.wrangler/

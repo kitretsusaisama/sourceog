@@ -1,0 +1,11 @@
+{
+  "name": "@sourceog/testing",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@sourceog/server": "workspace:*",
+    "@sourceog/runtime": "workspace:*",
+    "vitest": "^3.0.9"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@sourceog/adapter-cloudflare",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sourceog/adapter-utils": "workspace:*",
+    "@sourceog/runtime": "workspace:*"
+  }
+}
