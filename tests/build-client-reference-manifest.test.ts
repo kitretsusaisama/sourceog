@@ -4,8 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildClientReferenceManifest,
-  ChunkGraph,
-  CompilerError
+  ChunkGraph
 } from "@sourceog/compiler";
 import type { AnalyzedModuleBoundary } from "@sourceog/compiler";
 

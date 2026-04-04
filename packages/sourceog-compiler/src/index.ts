@@ -11,7 +11,6 @@ import { createHash } from "node:crypto";
 
 // We import router/platform lazily to avoid circular deps at type level
 type RouteManifest = import("@sourceog/router").RouteManifest;
-type SourceOGConfig = import("@sourceog/platform").SourceOGConfig;
 
 // ---------------------------------------------------------------------------
 // Client reference manifest types
@@ -77,7 +76,6 @@ async function ensureDir(dir: string): Promise<void> {
 }
 
 const CLIENT_DIRECTIVE_RE = /^\s*["']use client["']/m;
-const SERVER_DIRECTIVE_RE = /^\s*["']use server["']/m;
 
 /**
  * Walk a directory recursively and collect files matching the given predicate.
@@ -126,10 +124,10 @@ function isSourceFile(filePath: string): boolean {
 /**
  * Scan a directory for 'use client' modules and build a client reference registry.
  */
-async function buildClientReferenceRegistry(
+async function _buildClientReferenceRegistry(
   appRoot: string,
   cwd: string,
-  outputDir: string
+  _outputDir: string
 ): Promise<Record<string, ClientReferenceEntry>> {
   const registry: Record<string, ClientReferenceEntry> = {};
 
@@ -171,8 +169,6 @@ async function buildClientReferenceRegistry(
   return registry;
 }
 
-const EXPORT_RE = /export\s+(?:default\s+(?:function|class|const|let|var)|(?:const|let|var|function|class)\s+(\w+)|{\s*([^}]+)\s*})/g;
-
 function extractExportNames(content: string): string[] {
   const names = new Set<string>();
 
@@ -209,21 +205,6 @@ function extractExportNames(content: string): string[] {
  *  1. Copy source files verbatim as "chunks" to .sourceog/server-client-references/
  *  2. Write the manifest so RscWorkerPool can load it
  */
-async function mockBundle(
-  registry: Record<string, ClientReferenceEntry>,
-  outputDir: string
-): Promise<void> {
-  const refDir = path.join(outputDir, "server-client-references");
-  await ensureDir(refDir);
-
-  for (const entry of Object.values(registry)) {
-    if (!entry.filepath || !existsSync(entry.filepath)) continue;
-    const dest = path.join(refDir, `${entry.id}.js`);
-    if (!existsSync(dest)) {
-      await copyFile(entry.filepath, dest);
-    }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Public: buildApplication (real implementation from build.ts)

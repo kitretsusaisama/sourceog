@@ -4,7 +4,6 @@
 import type { RouteDefinition } from '@sourceog/router';
 import type { SourceOGRequestContext } from '@sourceog/runtime';
 import type { RenderPolicyResult } from './planner-types.js';
-import type { RenderStrategy } from '../types/planning.js';
 
 /**
  * Determines the optimal rendering strategy (SSG, ISR, SSR, Stream)

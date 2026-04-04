@@ -13,7 +13,6 @@
 import type { Worker } from 'node:worker_threads';
 import type { RouteDefinition } from '@sourceog/router';
 import type { SourceOGRequestContext } from '@sourceog/runtime';
-import type { NormalizedClientManifest } from '@sourceog/genbook';
 import type { HealthCheckResult } from './worker-health.js';
 import type { LifecycleState } from './worker-lifecycle.js';
 import type {

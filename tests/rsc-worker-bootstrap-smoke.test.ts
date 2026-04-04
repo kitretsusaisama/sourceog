@@ -1,5 +1,5 @@
 import { Worker } from "node:worker_threads";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 import { WORKER_FILE_PATH } from "@sourceog/renderer/core/constants";
 
 describe.sequential("rsc worker bootstrap", () => {

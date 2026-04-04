@@ -2,9 +2,9 @@
  * Tests for TagIndex-based O(1) tag invalidation in DataCache
  * Validates: Requirement 7 (O(1) Tag Invalidation via Tag Index)
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { DataCache } from "@sourceog/runtime";
-import type { DataCacheKey, DataCacheBackend, DataCacheEntry } from "@sourceog/runtime";
+import type { DataCacheKey } from "@sourceog/runtime";
 
 function makeKey(url: string, tags: string[] = []): DataCacheKey {
   return {
@@ -30,6 +30,7 @@ describe("TagIndex — set() maintains the index (Requirement 7.2)", () => {
   });
 
   it("multiple entries with the same tag are all removed", async () => {
+   
     const cache = new DataCache();
     const keys = [
       makeKey("https://example.com/1", ["products"]),

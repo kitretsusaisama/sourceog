@@ -2,7 +2,6 @@
 // Alibaba CTO 2027 Standard — Execution Planner
 
 import type { RouteDefinition } from '@sourceog/router';
-import type { SourceOGRequestContext } from '@sourceog/runtime';
 import type {
   ExecutionPlan,
   ExecutionPlanSegment,

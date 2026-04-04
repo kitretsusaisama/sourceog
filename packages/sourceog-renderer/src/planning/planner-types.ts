@@ -2,7 +2,6 @@
 // Alibaba CTO 2027 Standard — Planning Types
 
 import type {
-  ExecutionPlanSegment,
   RenderStrategy,
   CachePolicy,
   HydrationMode,
