@@ -52,7 +52,7 @@ class MockWorker extends EventEmitter {
 }
 
 vi.mock("node:worker_threads", async (importOriginal) => {
-  const original = await importOriginal<typeof import("node:worker_threads");>
+  const original = await importOriginal<typeof import("node:worker_threads")>();
   return {
     ...original,
     Worker: MockWorker,

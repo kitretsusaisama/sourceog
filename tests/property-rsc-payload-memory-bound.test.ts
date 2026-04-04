@@ -141,11 +141,11 @@ async function measureHeapDuringRender(
   const route = makeFakeRoute();
   const context = makeFakeContext();
 
+  let peakDelta = 0;
+
   // Track heap usage via onChunk callback — each chunk should be processed
   // without accumulating all chunks in memory simultaneously (Req 5.1)
   const renderPromise = pool.render(route, context, {
-    let peakDelta = 0;
-
     onChunk: (chunk: string) => {
       collectedChunks.push(chunk);
       const currentHeap = process.memoryUsage().heapUsed;
