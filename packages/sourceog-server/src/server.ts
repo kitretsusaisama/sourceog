@@ -365,6 +365,10 @@ function resolvePreferredPort(config: ResolvedSourceOGConfig, options: SourceOGS
 
 async function listenOnce(server: Server, port: number): Promise<number> {
   await new Promise<void>((resolve, reject) => {
+    const onError = (error) => {
+      reject(error);
+    };
+
     const onListening = () => {
       server.off("error", onError);
       resolve();

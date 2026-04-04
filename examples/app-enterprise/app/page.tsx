@@ -47,6 +47,12 @@ export default function EnterprisePage(): React.JSX.Element {
  * Sub-component for feature cards.
  * Demonstrates component composition within the renderer.
  */
+const styles = {
+  card: {},
+  cardTitle: {},
+  cardText: {}
+};
+
 function FeatureCard({ 
   title, 
   description 
