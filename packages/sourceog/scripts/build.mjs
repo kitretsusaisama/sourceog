@@ -24,6 +24,7 @@ const verifyMirrorSources = [
     sourcePath: path.join(workspaceRoot, "packages", "sourceog-renderer", "src", "rsc.ts"),
     destinationPath: path.join(verifyMirrorRoot, "sourceog-renderer", "rsc.ts.txt"),
   },
+];
   {
     sourcePath: path.join(workspaceRoot, "packages", "sourceog-runtime", "src", "client-island.tsx"),
     destinationPath: path.join(verifyMirrorRoot, "sourceog-runtime", "client-island.tsx.txt"),
