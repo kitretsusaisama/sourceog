@@ -168,7 +168,7 @@ describe("handleServerActionRequest — CSRF Origin guard (integration)", () => 
 
   it("returns 403 when Origin is a different port", async () => {
     const { status } = await makeRequest(server, "/__sourceog/actions/myAction", {
-      origin: `http://127.0.0.1:9999`
+      origin: 'http://127.0.0.1:9999'
     });
     expect(status).toBe(403);
   });

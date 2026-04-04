@@ -210,8 +210,8 @@ describe("Property 21: Streaming Shell Order", () => {
             const rscScripts = rscChunks.map(
               (chunk) => `<script type="text/x-component">${chunk}</script>`
             );
-            const hydrationScript = `<script>window.__SOURCEOG_RSC_READY__=true;</script>`;
-            const fullOutput = shellHtml + rscScripts.join("") + hydrationScript + `</body></html>`;
+            const hydrationScript = '<script>window.__SOURCEOG_RSC_READY__=true;</script>';
+            const fullOutput = shellHtml + rscScripts.join("") + hydrationScript + '</body></html>';
 
             // The shell must appear before any RSC script
             const shellEnd = shellHtml.length;
@@ -257,10 +257,10 @@ describe("Property 21: Streaming Shell Order", () => {
             }
 
             // 3. Hydration-ready signal (Req 39.4)
-            parts.push(`<script>window.__SOURCEOG_RSC_READY__=true;</script>`);
+            parts.push('<script>window.__SOURCEOG_RSC_READY__=true;</script>');
 
             // 4. Close
-            parts.push(`</body></html>`);
+            parts.push('</body></html>');
 
             const fullOutput = parts.join("");
 
@@ -297,8 +297,8 @@ describe("Property 21: Streaming Shell Order", () => {
             // Document-mode shell construction (from streamServerComponentsResponse)
             const withHead = bodyHtml.replace("<head>", `<head>${canonicalResult.headHtml}`);
             const withRoot = withHead
-              .replace("<body>", `<body><div id="sourceog-root">`)
-              .replace("</body>", `</div></body>`);
+              .replace("<body>", '<body><div id="sourceog-root">')
+              .replace("</body>", '</div></body>');
             const shellHtml = `<!DOCTYPE html>${withRoot}`;
 
             // Req 39.1: first chunk must contain <!DOCTYPE html>
@@ -326,15 +326,15 @@ describe("Property 21: Streaming Shell Order", () => {
           ),
           (rscChunks) => {
             const parts: string[] = [];
-            parts.push(`<!DOCTYPE html><html><body>`);
+            parts.push('<!DOCTYPE html><html><body>');
 
             for (const chunk of rscChunks) {
               parts.push(`<script type="text/x-component">${chunk}</script>`);
             }
 
             // Req 39.4: hydration-ready signal after all RSC chunks
-            parts.push(`<script>window.__SOURCEOG_RSC_READY__=true;</script>`);
-            parts.push(`</body></html>`);
+            parts.push('<script>window.__SOURCEOG_RSC_READY__=true;</script>');
+            parts.push('</body></html>');
 
             const fullOutput = parts.join("");
 

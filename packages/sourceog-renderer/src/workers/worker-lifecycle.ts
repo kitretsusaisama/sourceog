@@ -82,7 +82,7 @@ export class WorkerLifecycle {
     this.port = port;
     this.state = 'ready';
     this.emit('ready');
-    logger.debug(`Worker lifecycle → READY (port established)`);
+    logger.debug('Worker lifecycle → READY (port established)');
   }
 
   /**
@@ -99,7 +99,7 @@ export class WorkerLifecycle {
     invariant(this.port, 'No message port in beginRender()');
     this.state = 'busy';
     this.emit('busy');
-    logger.debug(`Worker lifecycle → BUSY (render claim)`);
+    logger.debug('Worker lifecycle → BUSY (render claim)');
     return true;
   }
 
@@ -117,7 +117,7 @@ export class WorkerLifecycle {
 
     this.state = 'ready';
     this.emit('idle');
-    logger.debug(`Worker lifecycle → READY (render release)`);
+    logger.debug('Worker lifecycle → READY (render release)');
   }
 
   /**
@@ -136,7 +136,7 @@ export class WorkerLifecycle {
     this.state = 'shutting_down';
     this.emit('shutdown_initiated');
 
-    logger.info(`Worker lifecycle → SHUTTING_DOWN (drain initiated)`);
+    logger.info('Worker lifecycle → SHUTTING_DOWN (drain initiated)');
 
     // Arm drain timeout
     this.drainTimeoutId = setTimeout(() => {
@@ -172,12 +172,12 @@ export class WorkerLifecycle {
 
     this.state = 'dead';
     this.emit('shutdown_complete');
-    logger.info(`Worker lifecycle → DEAD (graceful)`);
+    logger.info('Worker lifecycle → DEAD (graceful)');
   }
 
   private forceShutdown(): void {
     this.state = 'dead';
     this.emit('shutdown_timeout');
-    logger.warn(`Worker lifecycle → DEAD (timeout)`);
+    logger.warn('Worker lifecycle → DEAD (timeout)');
   }
 }

@@ -115,7 +115,7 @@ describe("Property 10: Edge Capability Enforcement", () => {
             // Write a clean route with no node-only imports
             await fs.writeFile(
               routeFile,
-              `export default function Page() { return null; }\n`,
+              "export default function Page() { return null; }\n",
               "utf8"
             );
 

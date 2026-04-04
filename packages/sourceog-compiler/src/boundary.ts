@@ -615,9 +615,9 @@ export async function computeRouteRuntimeCapability(
             line: lineNum,
             column,
             suggestion: `Replace "${specifier}" with an Edge-compatible alternative. ` +
-              `For crypto operations use the Web Crypto API (globalThis.crypto). ` +
-              `For file I/O use fetch() or KV storage. ` +
-              `For path utilities use URL and string manipulation.`
+              "For crypto operations use the Web Crypto API (globalThis.crypto). " +
+              "For file I/O use fetch() or KV storage. " +
+              "For path utilities use URL and string manipulation."
           });
         } else if (specifier.startsWith(".")) {
           // Resolve and enqueue local imports for transitive checking

@@ -155,7 +155,7 @@ describe("Property 12: Route Module Cache Bounded Size", () => {
             await loadRouteModule(promotedFile);
 
             // Now load one new entry — this must evict the LRU (not the promoted one)
-            await loadRouteModule(`/routes/page-new.tsx`);
+            await loadRouteModule('/routes/page-new.tsx');
 
             // The promoted entry must still be in the cache
             const promotedSurvived = routeModuleCache.has(promotedFile);

@@ -135,12 +135,12 @@ class VercelEdgeAdapter implements SourceOGAdapter {
     const vercelConfig = {
       version: 2,
       functions: { "api/**/*.ts": { runtime: "edge" } },
-      routes: manifest.routes.map((r: { pathname: string }) => ({ src: r.pathname, dest: `/api/index` })),
+      routes: manifest.routes.map((r: { pathname: string }) => ({ src: r.pathname, dest: "/api/index" })),
     };
     await fs.writeFile(path.join(deployRoot, "vercel.json"), JSON.stringify(vercelConfig, null, 2), "utf8");
     await fs.writeFile(
       path.join(deployRoot, "entrypoint.mjs"),
-      [`export const runtime = "edge";`, `export const buildId = ${JSON.stringify(artifacts.buildId)};`, `export const deploymentManifestPath = "./deployment-manifest.json";`].join("\n"),
+      ['export const runtime = "edge";', `export const buildId = ${JSON.stringify(artifacts.buildId)};`, 'export const deploymentManifestPath = "./deployment-manifest.json";'].join("\n"),
       "utf8"
     );
   }

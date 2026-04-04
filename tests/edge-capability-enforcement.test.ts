@@ -37,7 +37,7 @@ describe("edge capability enforcement", () => {
     it("error includes routeId, importPath, importedBy, line, column, and suggestion", async () => {
       const dir = await makeTempDir();
       const routeFile = path.join(dir, "route.ts");
-      await writeFile(routeFile, `import "node:fs";\nexport default function Page() { return null; }\n`);
+      await writeFile(routeFile, "import \"node:fs\";\nexport default function Page() { return null; }\n");
 
       const capability = await computeRouteRuntimeCapability(routeFile, "page:/test", "edge");
 
@@ -71,7 +71,7 @@ describe("edge capability enforcement", () => {
       const dir = await makeTempDir();
       const routeFile = path.join(dir, "route.ts");
       // Put the import on line 3 to verify line detection
-      await writeFile(routeFile, `// comment\n// another\nimport "node:crypto";\nexport default function Page() { return null; }\n`);
+      await writeFile(routeFile, '// comment\n// another\nimport "node:crypto";\nexport default function Page() { return null; }\n');
 
       const capability = await computeRouteRuntimeCapability(routeFile, "page:/crypto-route", "edge");
 
@@ -87,7 +87,7 @@ describe("edge capability enforcement", () => {
       const dir = await makeTempDir();
       const routeFile = path.join(dir, "route.ts");
       // Even with node-only imports, node-targeted routes skip checks
-      await writeFile(routeFile, `import "node:fs";\nexport default function Page() { return null; }\n`);
+      await writeFile(routeFile, 'import "node:fs";\nexport default function Page() { return null; }\n');
 
       const capability = await computeRouteRuntimeCapability(routeFile, "page:/node-route", "node");
 
@@ -117,11 +117,11 @@ describe("edge capability enforcement", () => {
       const deepFile = path.join(dir, "deep.ts");
 
       // deep.ts imports node:path
-      await writeFile(deepFile, `import "node:path";\nexport const x = 1;\n`);
+      await writeFile(deepFile, 'import "node:path";\nexport const x = 1;\n');
       // util.ts imports deep.ts
-      await writeFile(utilFile, `import "./deep";\nexport const y = 2;\n`);
+      await writeFile(utilFile, 'import "./deep";\nexport const y = 2;\n');
       // route.ts imports util.ts (no direct node-only import)
-      await writeFile(routeFile, `import "./util";\nexport default function Page() { return null; }\n`);
+      await writeFile(routeFile, 'import "./util";\nexport default function Page() { return null; }\n');
 
       const capability = await computeRouteRuntimeCapability(routeFile, "page:/transitive", "edge");
 
@@ -138,8 +138,8 @@ describe("edge capability enforcement", () => {
       const routeFile = path.join(dir, "route.ts");
       const utilFile = path.join(dir, "util.ts");
 
-      await writeFile(utilFile, `export const helper = () => "hello";\n`);
-      await writeFile(routeFile, `import "./util";\nexport default function Page() { return null; }\n`);
+      await writeFile(utilFile, 'export const helper = () => "hello";\n');
+      await writeFile(routeFile, 'import "./util";\nexport default function Page() { return null; }\n');
 
       const capability = await computeRouteRuntimeCapability(routeFile, "page:/clean", "edge");
 
@@ -180,7 +180,7 @@ describe("edge capability enforcement", () => {
     it("returns supportsEdge: true and empty violations for a route with no node imports", async () => {
       const dir = await makeTempDir();
       const routeFile = path.join(dir, "route.ts");
-      await writeFile(routeFile, `export default function Page() { return null; }\n`);
+      await writeFile(routeFile, 'export default function Page() { return null; }\n');
 
       const capability = await computeRouteRuntimeCapability(routeFile, "page:/clean", "edge");
 

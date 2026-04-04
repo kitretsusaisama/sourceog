@@ -87,7 +87,7 @@ export class ResolverError extends TranspileBaseError {
 
   public override get resolutionHint(): string {
     if (this.specifier.startsWith('.')) {
-      return `Verify the relative path is correct. Did you miss a file extension (e.g., .js, .tsx)?`;
+      return 'Verify the relative path is correct. Did you miss a file extension (e.g., .js, .tsx)?';
     }
     return `Ensure the package "${this.specifier}" is installed in "node_modules" and has valid "exports" in package.json.`;
   }
@@ -112,7 +112,7 @@ export class NoTranspilerError extends TranspileBaseError {
   }
 
   public override get resolutionHint(): string {
-    return `Install a transformer like "tsx", "esbuild", or "sucrase". Alternatively, use Node.js v22+ with "--experimental-transform-types".`;
+    return 'Install a transformer like "tsx", "esbuild", or "sucrase". Alternatively, use Node.js v22+ with "--experimental-transform-types".';
   }
 }
 

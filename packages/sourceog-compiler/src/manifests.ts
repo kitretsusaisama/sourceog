@@ -571,7 +571,7 @@ export async function buildClientReferenceManifest(
       throw new CompilerError(
         "USE_CLIENT_NO_EXPORTS",
         `"use client" file has no exports: ${module.filePath}\n` +
-        `Every "use client" file must export at least one component or value.`
+        'Every "use client" file must export at least one component or value.'
       );
     }
 
@@ -581,7 +581,7 @@ export async function buildClientReferenceManifest(
       throw new CompilerError(
         "CLIENT_REF_NO_CHUNKS",
         `"use client" file has no chunks in the build graph: ${module.filePath}\n` +
-        `This means the bundler did not include this file. Check your entry points.`
+        'This means the bundler did not include this file. Check your entry points.'
       );
     }
 
