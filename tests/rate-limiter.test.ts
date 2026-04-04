@@ -1,7 +1,7 @@
 import { describe, it } from "vitest";
 import * as fc from "fast-check";
 import { expect } from "vitest";
-import { RateLimiter, rateLimit, type RateLimitRule } from "@sourceog/platform";
+import { RateLimiter } from "@sourceog/platform";
 import type { SourceOGRequest } from "@sourceog/runtime";
 
 // ---------------------------------------------------------------------------

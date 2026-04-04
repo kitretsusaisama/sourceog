@@ -6,7 +6,6 @@ describe.sequential("rsc worker bootstrap", () => {
   it("starts the canonical worker bootstrap without syntax or spawn failure", async () => {
     await new Promise<void>((resolve, reject) => {
       let settled = false;
-      let terminating = false;
       const worker = new Worker(WORKER_FILE_PATH, {
         workerData: {
           useInlineTransform: true,
@@ -15,9 +14,8 @@ describe.sequential("rsc worker bootstrap", () => {
       });
 
       let failed = false;
-      const timer = setTimeout(() => {
+      setTimeout(() => {
         if (!failed && !settled) {
-          terminating = true;
           void worker.terminate().then(() => {
             settled = true;
             resolve();

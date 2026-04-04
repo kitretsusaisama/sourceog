@@ -3,7 +3,7 @@
  * Validates: Requirements 11.1, 11.4
  *
  * For any arbitrary string used as an HTML attribute value, escapeHtmlAttr()
- * must produce output that never contains unescaped &, \", or > characters,
+ * must produce output that never contains unescaped &, \" , or > characters,
  * preventing attribute breakout and XSS injection.
  */
 
@@ -15,11 +15,9 @@ import { escapeHtmlAttr } from "@sourceog/renderer";
 // Characters that must be escaped inside double-quoted HTML attribute values
 // ---------------------------------------------------------------------------
 
-const DANGEROUS_CHARS = ["&", "\"", ">"];
-
 /**
  * Assert that the escaped value does not break out of a double-quoted attribute.
- * Checks: no raw \", no raw >, no bare &.
+ * Checks: no raw \" , no raw >, no bare &.
  */
 function assertSafeInHtmlAttr(escaped: string): void {
   expect(escaped).not.toContain('"');

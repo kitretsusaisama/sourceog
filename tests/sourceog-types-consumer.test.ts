@@ -1,8 +1,4 @@
-import path from "node:path";
-import { promises as fs } from "node:fs";
 import { spawn } from "node:child_process";
-import { tmpdir } from "node:os";
-import { createRequire } from "node:module";
 import { describe, it } from "vitest";
 
 const require = createRequire(import.meta.url);
