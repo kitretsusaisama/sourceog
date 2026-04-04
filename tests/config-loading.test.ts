@@ -94,11 +94,6 @@ const safeStringArb = fc.string({ minLength: 1, maxLength: 20 }).map((s) =>
   s.replace(/[^a-zA-Z0-9_]/g, "x")
 );
 
-const presetConfigArb: fc.Arbitrary<Partial<SourceOGConfig>> = fc.record({
-  appDir: fc.option(safeStringArb, { nil: undefined }),
-  trailingSlash: fc.option(fc.boolean(), { nil: undefined }),
-});
-
 // ---------------------------------------------------------------------------
 // Property 17: Config presets merge before plugin hooks
 // Validates: Requirements 15.2
