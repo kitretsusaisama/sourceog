@@ -132,7 +132,7 @@ function makeFakeContext() {
  */
 async function measureHeapDuringRender(
   pool: InstanceType<typeof RscWorkerPool>,
-  totalPayloadSize: number
+  _totalPayloadSize: number
 ): Promise<{ peakDelta: number; collectedChunks: string[] }> {
   const collectedChunks: string[] = [];
   let peakHeap = 0;
@@ -155,8 +155,6 @@ async function measureHeapDuringRender(
       }
     }
   });
-
-  let peakDelta = 0;
 
   // Poll heap while render is in flight
   const pollInterval = setInterval(() => {

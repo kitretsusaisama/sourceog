@@ -25,18 +25,6 @@ function makeRequest(ip = "127.0.0.1", userId?: string): SourceOGRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Arbitraries
-// ---------------------------------------------------------------------------
-
-/** Generates a RateLimitRule with small, tractable values */
-const rateLimitRuleArb: fc.Arbitrary<RateLimitRule> = fc.record({
-  windowMs: fc.integer({ min: 1000, max: 60_000 }),
-  max: fc.integer({ min: 1, max: 20 }),
-  keyBy: fc.constant("ip" as const),
-  skipSuccessfulRequests: fc.constant(false),
-});
-
-// ---------------------------------------------------------------------------
 // Property 26: Rate limiter allows requests under the limit
 // Validates: Requirements 8.2
 // ---------------------------------------------------------------------------

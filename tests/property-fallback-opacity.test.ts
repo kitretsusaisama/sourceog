@@ -8,7 +8,7 @@
  * stack, and timestamp MUST be emitted BEFORE any DOM modification occurs.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import { getClientRuntimeScript } from "@sourceog/dev";
 
@@ -24,7 +24,7 @@ function arbitraryRenderContext(): fc.Arbitrary<{
   bodyHtml: string;
 }> {
   return fc.record({
-    pathname: fc.stringMatching(/^\/[a-z0-9/-]{0,30}$/).map((s) => s || "/"),
+    pathname: fc.stringMatching(/^\/[a-z0-9\/-]{0,30}$/).map((s) => s || "/"),
     renderContextKey: fc.stringMatching(/^[0-9a-f]{16}$/),
     renderMode: fc.constant("server-components"),
     shellMode: fc.oneof(fc.constant("document" as const), fc.constant("fragment" as const)),

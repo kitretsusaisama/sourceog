@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import {
-  loadConfig,
   defineConfig,
   deepFreeze,
   deepMerge,
@@ -98,12 +97,6 @@ const safeStringArb = fc.string({ minLength: 1, maxLength: 20 }).map((s) =>
 const presetConfigArb: fc.Arbitrary<Partial<SourceOGConfig>> = fc.record({
   appDir: fc.option(safeStringArb, { nil: undefined }),
   trailingSlash: fc.option(fc.boolean(), { nil: undefined }),
-});
-
-const presetArb: fc.Arbitrary<SourceOGPreset> = fc.record({
-  name: safeStringArb,
-  plugins: fc.constant([]),
-  config: fc.option(presetConfigArb, { nil: undefined }),
 });
 
 // ---------------------------------------------------------------------------

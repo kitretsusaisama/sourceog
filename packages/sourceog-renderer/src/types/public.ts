@@ -4,7 +4,6 @@
 import type { RouteDefinition } from '@sourceog/router';
 import type { SourceOGRequestContext } from '@sourceog/runtime';
 import type { WorkerRenderResponse } from './internal.js';
-import type { ExecutionPlan } from './planning.js';
 
 /**
  * Configuration options for rendering a route to an RSC payload.
@@ -30,6 +29,7 @@ export interface RenderRouteOptions {
   /** 
    * Maximum time in milliseconds to wait for the render to complete.
    * If exceeded, the render is aborted and an error is thrown.
+   */
    */
   readonly timeoutMs?: number;
 

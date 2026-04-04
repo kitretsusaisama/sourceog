@@ -78,11 +78,6 @@ vi.mock("node:worker_threads", async (importOriginal) => {
   };
 });
 
-// Import the streaming function under test
-const { streamServerComponentsResponseForTest } = await import("@sourceog/renderer").catch(() => ({
-  streamServerComponentsResponseForTest: undefined
-}));
-
 // ---------------------------------------------------------------------------
 // Direct test of streamServerComponentsResponse via render pipeline
 // ---------------------------------------------------------------------------
@@ -106,16 +101,6 @@ const RSC_SCRIPT_MARKERS = [
  * Collect all chunks written to a PassThrough stream.
  * Returns them in order of emission.
  */
-async function collectStreamChunks(stream: import("node:stream").PassThrough): Promise<string[]> {
-  return new Promise<string[]>((resolve, reject) => {
-    const chunks: string[] = [];
-    stream.on("data", (chunk: Buffer | string) => {
-      chunks.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
-    });
-    stream.on("end", () => resolve(chunks));
-    stream.on("error", reject);
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Build a minimal CanonicalRenderResult for testing

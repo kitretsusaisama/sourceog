@@ -2,7 +2,6 @@
 // Alibaba CTO 2027 Standard — Worker Pool Management
 
 import { Worker } from 'node:worker_threads';
-import { setTimeout as sleep } from 'node:timers/promises';
 import type {
   WorkerMessage,
   WorkerRenderRequest,

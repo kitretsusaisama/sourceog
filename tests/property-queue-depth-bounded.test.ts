@@ -12,7 +12,7 @@
  * 5. Memory pressure resilience
  */
 
-import { describe, it, afterEach, expect, vi, beforeEach, test } from "vitest";
+import { describe, afterEach, expect, vi, test } from "vitest";
 import * as fc from "fast-check";
 import { EventEmitter } from "node:events";
 import { performance } from "perf_hooks";
@@ -279,7 +279,7 @@ describe("Property 13: Queue Depth Bounded — ADVANCED (100% Edge Coverage)", (
   // INVARIANT 1: Exact overflow rejection under chaos
   test.each(EXTREME_SCENARIOS)(
     "chaos($name): exactly $overflow rejections, queue≤$maxQueueDepth",
-    async ({ name, workerCount, maxQueueDepth, overflow, chaos, concurrentLoad }) => {
+    async ({ name, workerCount, maxQueueDepth, overflow, concurrentLoad }) => {
       // SETUP: Chaos-configured pool
       pool = new RscWorkerPool({
         workerCount, maxQueueDepth,
@@ -364,9 +364,6 @@ test.skip("adversarial: p99.9 ≤ maxQueueDepth (controlled load)", async () => 
         const ctx = makeFakeContext();
 
         // Saturate workers first
-        const inflight = Array.from({ length: workerCount }, () =>
-          (pool?.render(route, ctx) ?? Promise.resolve(null)).catch(() => null)
-        );
         await tick(2);
 
         // Wave-based load: 10 waves x 10 requests = controlled concurrency

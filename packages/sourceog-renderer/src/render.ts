@@ -21,8 +21,6 @@ import type {
   SourceOGResponse,
 } from "@sourceog/runtime";
 import { SourceOGError, SOURCEOG_ERROR_CODES, html } from "@sourceog/runtime";
-import type { WorkerRenderResponse } from "./types/internal.js";
-import type { RenderRouteOptions } from "./types/public.js";
 import { renderRouteToOfficialRscPayload } from "./rsc.js";
 import { loadModule } from "./transpiler/transpiler-core.js";
 

@@ -3,7 +3,7 @@
 
 import type { RouteDefinition } from '@sourceog/router';
 import type { SourceOGRequestContext } from '@sourceog/runtime';
-import type { HydrationPolicyResult, PolicyContext } from './planner-types.js';
+import type { HydrationPolicyResult } from './planner-types.js';
 import type { HydrationMode } from '../types/planning.js';
 import { isMobile } from '../core/env.js'; // Hypothetical helper, or check UA
 

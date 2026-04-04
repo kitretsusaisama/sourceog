@@ -3,7 +3,6 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { RouteManifest } from "@sourceog/router";
 import {
-  SOURCEOG_MANIFEST_VERSION,
   type ActionManifest,
   type ClientReferenceManifestEntry,
   type DiagnosticIssue,

@@ -1,4 +1,4 @@
-import { ZodSchema, ZodError } from "zod";
+import { ZodSchema } from "zod";
 import { FrameworkError } from "@sourceog/runtime";
 import type { SourceOGRequest } from "@sourceog/runtime";
 

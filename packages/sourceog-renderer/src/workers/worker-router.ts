@@ -11,16 +11,13 @@
 // CONTRACT: Stateless, pure functions. No shared mutable state beyond mutex.
 
 import type { MessagePort } from 'node:worker_threads';
-import type {
-  WorkerRenderRequest,
-  WorkerMessage,
-} from '../types/messages.js';
+import type { WorkerRenderRequest } from '../types/messages.js';
 import type { WorkerRenderResponse } from '../types/internal.js';
 import type { NormalizedClientManifest } from '@sourceog/genbook';
 
 import React from 'react';
 import { invariant } from '@sourceog/genbook';
-import { RenderError, toError } from '../core/errors.js';
+import { toError } from '../core/errors.js';
 import { logger } from '../core/logger.js';
 import { workerHealth } from './worker-health.js';
 import { WorkerLifecycle } from './worker-lifecycle.js';

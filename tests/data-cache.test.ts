@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { DataCache, DataFilesystemCacheStore } from "@sourceog/runtime";
-import type { DataCacheBackend, DataCacheEntry, DataCacheKey } from "@sourceog/runtime";
+import type { DataCacheKey } from "@sourceog/runtime";
 
 async function withTempDir<T>(prefix: string, run: (dir: string) => Promise<T>): Promise<T> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));

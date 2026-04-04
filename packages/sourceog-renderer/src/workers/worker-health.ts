@@ -12,7 +12,6 @@
 
 import type { Worker } from 'node:worker_threads';
 import { logger } from '../core/logger.js';
-import { WorkerPoolExhaustedError } from '@sourceog/genbook';
 import { isProduction } from '../core/env.js';
 
 // ---------------------------------------------------------------------------
@@ -38,6 +37,7 @@ export interface HealthCheckResult {
 
 /**
  * Configurable thresholds for worker health.
+ */
  */
 export interface HealthConfig {
   /**
@@ -211,7 +211,7 @@ export class WorkerHealthMonitor {
     };
   }
 
-  private isMemoryHealthy(worker: Worker): boolean {
+  private isMemoryHealthy(_worker: Worker): boolean {
     const memory = process.memoryUsage();
     const heapRatio = memory.heapUsed / memory.rss;
     return (

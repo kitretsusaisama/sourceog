@@ -45,17 +45,6 @@ const VALID_FLIGHT_LINES = [
   '0:{"id":"test","chunks":[],"name":"Button","async":false}'
 ];
 
-/** Invalid lines that must NOT appear in a Flight payload */
-const INVALID_FLIGHT_LINES = [
-  '<div data-sourceog-client-placeholder="true"></div>',
-  'data-sourceog-client-placeholder',
-  'undefined',
-  '',
-  'not-a-flight-line',
-  '{"type":"div"}',  // missing row-id prefix
-  'abc:D{}',         // non-numeric row-id
-];
-
 // ---------------------------------------------------------------------------
 // Arbitraries
 // ---------------------------------------------------------------------------

@@ -18,11 +18,9 @@ import type {
 } from "@sourceog/platform/config";
 import {
   parseCookieHeader,
-  serializeCookieHeader,
   createMutableHeaders,
   createMutableCookies,
   buildWebResponse,
-  type MutableCookiesWithPending,
   type AdapterSourceOGRequest,
   type AdapterSourceOGResponse,
   type GeoData,
