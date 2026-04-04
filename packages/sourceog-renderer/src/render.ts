@@ -438,11 +438,11 @@ export function createDocumentHtml(
   const headMarkup = `${rendered.headHtml}${renderClientAssetHead(options?.clientAssets)}`;
   const bodyScripts = [
     ...rendered.rscPayloadChunks.map((chunk) => `<script type="text/x-component">${escapeScriptContent(chunk)}</script>`),
-    `<script>window.__SOURCEOG_RSC_READY__=true;</script>`,
+    '<script>window.__SOURCEOG_RSC_READY__=true;</script>',
     renderClientContextScript(rendered, options?.clientAssets),
     options?.clientAssets
       ? `<script type="module" src="${escapeHtmlAttr(options.clientAssets.runtimeHref)}"></script>`
-      : `<script type="module" src="/__sourceog/client.js"></script>`,
+      : '<script type="module" src="/__sourceog/client.js"></script>',
   ].join("");
 
   if (rendered.shellMode === "document") {
@@ -456,7 +456,7 @@ export function createDocumentHtml(
     }
 
     if (body.includes("<body")) {
-      body = body.replace(/<body([^>]*)>/, `<body$1><div id="sourceog-root">`);
+      body = body.replace(/<body([^>]*)>/, '<body$1><div id="sourceog-root">');
     }
 
     if (body.includes("</body>")) {
@@ -498,7 +498,6 @@ export async function renderRouteToCanonicalResult(
       });
     }
   }
-
   const element = buildElementTree(route, modules, context, parallelSlotElements);
   const bodyHtml = renderToStaticMarkup(element);
   const { renderedSegments, serverTree } = buildRenderTree(route);
@@ -523,8 +522,8 @@ export async function renderRouteToCanonicalResult(
     parallelRouteMap: options.routeIdentity?.parallelRouteMap ?? {},
     renderMode: resolveRenderMode(options.clientAssets),
     headHtml: renderMetadataToHead(modules.metadata),
-    shellHtmlStart: bodyHtml.startsWith("<html") ? "<html><body>" : `<div id="sourceog-root">`,
-    shellHtmlEnd: bodyHtml.startsWith("<html") ? "</body></html>" : `</div>`,
+    shellHtmlStart: bodyHtml.startsWith("<html") ? "<html><body>" : '<div id="sourceog-root">',
+    shellHtmlEnd: bodyHtml.startsWith("<html") ? "</body></html>" : '</div>',
     shellMode: bodyHtml.startsWith("<html") ? "document" : "fragment",
     bodyHtml,
     rscPayloadFormat: rscPayload.format,

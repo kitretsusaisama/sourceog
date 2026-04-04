@@ -448,7 +448,7 @@ export function renderMetadataToHead(metadata: Metadata): string {
     }
   } else {
     // Default viewport
-    parts.push(`<meta name="viewport" content="width=device-width, initial-scale=1" />`);
+    parts.push('<meta name="viewport" content="width=device-width, initial-scale=1" />');
   }
 
   // Theme color (top-level)

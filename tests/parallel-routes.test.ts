@@ -20,7 +20,6 @@ async function readResponseBody(response: SourceOGResponse): Promise<string> {
   if (!response.body) {
     return "";
   }
-
   if (typeof response.body === "string") {
     return response.body;
   }
@@ -45,25 +44,22 @@ describe("parallel routes", () => {
     await fs.mkdir(path.join(tempDir, "app", "dashboard", "@team"), { recursive: true });
     await fs.writeFile(
       path.join(tempDir, "sourceog.config.ts"),
-      `export default { appDir: "app", distDir: ".sourceog" };`,
+      'export default { appDir: "app", distDir: ".sourceog" };',
       "utf8"
     );
     await fs.writeFile(
       path.join(tempDir, "app", "dashboard", "layout.tsx"),
-      `import React from "react";
-       export default function DashboardLayout({ children, team }: { children: React.ReactNode; team?: React.ReactNode }) {
-         return <section><main>{children}</main><aside>{team}</aside></section>;
-       }`,
+      'import React from "react";\nexport default function DashboardLayout({ children, team }: { children: React.ReactNode; team?: React.ReactNode }) {\n  return <section><main>{children}</main><aside>{team}</aside></section>;\n}',
       "utf8"
     );
     await fs.writeFile(
       path.join(tempDir, "app", "dashboard", "page.tsx"),
-      `export default function DashboardPage() { return <div>Overview Content</div>; }`,
+      'export default function DashboardPage() { return <div>Overview Content</div>; }',
       "utf8"
     );
     await fs.writeFile(
       path.join(tempDir, "app", "dashboard", "@team", "page.tsx"),
-      `export default function TeamSlotPage() { return <div>Team Slot Content</div>; }`,
+      'export default function TeamSlotPage() { return <div>Team Slot Content</div>; }',
       "utf8"
     );
 

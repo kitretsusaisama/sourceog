@@ -214,7 +214,7 @@ class VercelNodeAdapter implements SourceOGAdapter {
     await fs.writeFile(path.join(deployRoot, "vercel.json"), JSON.stringify(vercelConfig, null, 2), "utf8");
     await fs.writeFile(
       path.join(deployRoot, "entrypoint.mjs"),
-      [`export const runtime = "nodejs";`, `export const buildId = ${JSON.stringify(artifacts.buildId)};`, `export const deploymentManifestPath = "./deployment-manifest.json";`].join("\n"),
+      ['export const runtime = "nodejs";', `export const buildId = ${JSON.stringify(artifacts.buildId)};`, 'export const deploymentManifestPath = "./deployment-manifest.json";'].join("\n"),
       "utf8"
     );
   }

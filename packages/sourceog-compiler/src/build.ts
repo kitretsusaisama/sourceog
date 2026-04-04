@@ -337,8 +337,8 @@ function buildAnalyzerHtml(bundles: RouteBundleSize[], report: BudgetReport): st
       const pass = !violationSet.has(b.routeKey);
       const budgetCell = violation ? formatBytes(violation.budgetBytes) : "—";
       const status = pass
-        ? `<span style="color:#22c55e">✓ pass</span>`
-        : `<span style="color:#ef4444">✗ fail</span>`;
+        ? '<span style="color:#22c55e">✓ pass</span>'
+        : '<span style="color:#ef4444">✗ fail</span>';
       return `<tr>
         <td>${escapeHtml(b.routeKey)}</td>
         <td>${escapeHtml(b.pattern)}</td>

@@ -1337,7 +1337,7 @@ export function buildBootstrapScript(context: {
 }): string {
   const safeJson = JSON.stringify(context).replace(/<\/script>/gi, "<\\/script>");
   // Req 4.8, 12.7: install hydrationMode deprecation proxy via Object.defineProperty
-  const deprecationProxy = `Object.defineProperty(window.__SOURCEOG_CLIENT_CONTEXT__,"hydrationMode",{configurable:true,enumerable:false,get:function(){console.warn("hydrationMode is deprecated. Use renderMode instead.");return window.__SOURCEOG_CLIENT_CONTEXT__.renderMode==="client-root"?"full-route":"mixed-route";}});`;
+  const deprecationProxy = 'Object.defineProperty(window.__SOURCEOG_CLIENT_CONTEXT__,"hydrationMode",{configurable:true,enumerable:false,get:function(){console.warn("hydrationMode is deprecated. Use renderMode instead.");return window.__SOURCEOG_CLIENT_CONTEXT__.renderMode==="client-root"?"full-route":"mixed-route";}});';
   return `<script>window.__SOURCEOG_CLIENT_CONTEXT__=${safeJson};${deprecationProxy}</script>`;
 }
 

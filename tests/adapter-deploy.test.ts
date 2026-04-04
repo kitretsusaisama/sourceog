@@ -334,7 +334,7 @@ it('processes 10,000 entries in O(N) time (< 50ms)', () => {
       (manifest.registry as Record<string, ClientManifestEntry>)[`./c-${i}#Comp`] = {
         id: `id-${i}`,
         name: 'Comp',
-        chunks: [`c.js`]
+        chunks: ['c.js']
       };
     }
     

@@ -218,7 +218,7 @@ export function ClientIsland<TProps extends object>({
       throw new CompilerError(
         "USE_CLIENT_NO_MANIFEST_ENTRY",
         `[SOURCEOG] Missing client reference manifest entry for "${moduleId}#${exportName}". ` +
-        `Ensure the "use client" file is included in the build and the manifest has been generated. ` +
+        'Ensure the "use client" file is included in the build and the manifest has been generated. ' +
         `Component: ${Component.displayName ?? Component.name ?? "unknown"}`
       );
     }

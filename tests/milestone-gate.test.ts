@@ -211,7 +211,7 @@ describe("M3-002: hydrateRoot at document root check", () => {
   it("fails when hmr.ts calls hydrateRoot(document.documentElement, ...)", async () => {
     const dir = await makeTempDir();
     const hmrFile = path.join(dir, "hmr.ts");
-    await writeFile(hmrFile, `hydrateRoot(document.documentElement, tree);`);
+    await writeFile(hmrFile, 'hydrateRoot(document.documentElement, tree);');
     const buildResult = await makeBuildResult(dir, { hmrFilePath: hmrFile });
     const result = await verifyMilestone3Runtime(buildResult);
     expect(result.failingChecks.find((c) => c.id === "M3-002")).toBeDefined();
