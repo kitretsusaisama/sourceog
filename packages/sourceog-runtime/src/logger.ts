@@ -13,8 +13,33 @@ export interface SourceOGLogger {
   error(message: string, context?: Record<string, unknown>): void;
 }
 
+const LOG_LEVEL_PRIORITY: Record<LogRecord["level"], number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+function resolveMinimumLogLevel(): LogRecord["level"] {
+  if (process.env.SOURCEOG_DEBUG === "true") {
+    return "debug";
+  }
+  if (process.env.NODE_ENV === "test") {
+    return "error";
+  }
+  if (process.env.NODE_ENV === "production") {
+    return "warn";
+  }
+  return "info";
+}
+
 export function createLogger(requestId?: string): SourceOGLogger {
+  const minimumLevel = resolveMinimumLogLevel();
   const emit = (level: LogRecord["level"], message: string, context?: Record<string, unknown>): void => {
+    if (LOG_LEVEL_PRIORITY[level] < LOG_LEVEL_PRIORITY[minimumLevel]) {
+      return;
+    }
+
     const record: LogRecord = {
       level,
       message,

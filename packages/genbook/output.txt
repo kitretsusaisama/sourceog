@@ -1,0 +1,1433 @@
+
+--- src\index.ts ---
+
+// packages/genbook/src/index.ts
+// Alibaba CTO 2027 Standard — Public API Surface
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+export { SourceOGBaseError } from './errors/base.js';
+export type { ErrorCategory, ErrorSeverity } from './errors/base.js';
+
+export * from './errors/core.errors.js';
+export * from './errors/render.errors.js';
+export * from './errors/transpile.errors.js';
+export * from './errors/manifest.errors.js';
+export * from './errors/worker.errors.js';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+export * from './types/index.js';
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+export * from './utils/index.js';
+
+
+--- src\errors\base.ts ---
+
+// packages/genbook/src/errors/base.ts
+// Alibaba CTO 2027 Standard — Universal Error Contract
+
+/**
+ * High-level taxonomy for error classification.
+ * Used by monitoring systems to aggregate and route alerts.
+ */
+export type ErrorCategory =
+  | 'core'       // Critical infrastructure (Env, Config, Invariants)
+  | 'render'     // Rendering pipeline (SSR, RSC, Flight)
+  | 'transpile'  // Build-time or runtime transformation
+  | 'network'    // Fetch, IO, or external service calls
+  | 'manifest'   // Module maps, asset resolution
+  | 'worker'     // Thread pool, process management
+  | 'validation';// Input validation, user errors
+
+/**
+ * Severity levels for operational triage.
+ */
+export type ErrorSeverity = 
+  | 'low'        // Informational, automatic recovery likely
+  | 'medium'     // Recoverable, but degraded experience
+  | 'high'       // Feature failure, requires intervention
+  | 'critical';  // System instability, fatal to process
+
+/**
+ * Abstract base error for the entire SourceOG ecosystem.
+ * 
+ * Design Goals:
+ * 1. Serializable: Safe for JSON.stringify (logs/telemetry).
+ * 2. Actionable: Includes resolution hints for smarter tooling.
+ * 3. Structured: Machine-readable codes over string matching.
+ */
+export abstract class SourceOGBaseError extends Error {
+  /**
+   * Unique machine-readable error code (e.g., 'RENDER_TIMEOUT').
+   * Must be overridden by subclasses.
+   */
+  public abstract readonly code: string;
+
+  /**
+   * High-level classification for error grouping.
+   */
+  public abstract readonly category: ErrorCategory;
+
+  /**
+   * Operational severity level.
+   * Defaults to 'medium' (recoverable error).
+   */
+  public readonly severity: ErrorSeverity = 'medium';
+
+  /**
+   * If true, the error is unrecoverable and the process/worker 
+   * should likely terminate or restart.
+   */
+  public readonly isFatal: boolean = false;
+
+  /**
+   * ISO 8601 timestamp of error instantiation.
+   */
+  public readonly timestamp: string;
+
+  /**
+   * Arbitrary structured metadata (e.g., routeId, filePath, duration).
+   * Must be JSON-serializable.
+   */
+  public readonly metadata: Record<string, unknown>;
+
+  /**
+   * Flag to identify SourceOG errors via `instanceof` checks across
+   * package boundaries (duck typing fallback).
+   */
+  public readonly isSourceOGError = true;
+
+  constructor(
+    message: string,
+    options?: {
+      cause?: unknown;
+      metadata?: Record<string, unknown>;
+    }
+  ) {
+    // Maintains proper stack trace in V8 environments
+    super(message, options?.cause ? { cause: options.cause } : undefined);
+    
+    this.timestamp = new Date().toISOString();
+    this.metadata = options?.metadata ?? {};
+
+    // Correct the prototype chain for instanceof checks
+    Object.setPrototypeOf(this, new.target.prototype);
+
+    // Capture stack trace (excludes constructor from trace)
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, this.constructor);
+    }
+  }
+
+  /**
+   * Optimistic Tuning: Provides actionable context for debugging tools.
+   * Subclasses should override this to suggest specific fixes.
+   * 
+   * @example
+   * return "Check if the 'tsx' package is installed correctly.";
+   */
+  public get resolutionHint(): string | null {
+    return null;
+  }
+
+  /**
+   * Converts the error to a plain object for logging/telemetry.
+   * Handles circular references and nested errors gracefully.
+   */
+  public toJSON(): Record<string, unknown> {
+    const cause = this.cause;
+    let causeData: unknown = undefined;
+
+    // Recursively serialize nested SourceOG errors
+    if (cause instanceof SourceOGBaseError) {
+      causeData = cause.toJSON();
+    } else if (cause instanceof Error) {
+      causeData = {
+        name: cause.name,
+        message: cause.message,
+        stack: cause.stack,
+      };
+    } else if (cause) {
+      causeData = String(cause);
+    }
+
+    return {
+      type: this.constructor.name,
+      code: this.code,
+      category: this.category,
+      severity: this.severity,
+      isFatal: this.isFatal,
+      message: this.message,
+      metadata: this.metadata,
+      resolutionHint: this.resolutionHint,
+      timestamp: this.timestamp,
+      stack: this.stack,
+      cause: causeData,
+    };
+  }
+}
+
+
+--- src\errors\core.errors.ts ---
+
+// packages/genbook/src/errors/core.errors.ts
+// Alibaba CTO 2027 Standard — Core Infrastructure Errors
+
+import { SourceOGBaseError, ErrorCategory, ErrorSeverity } from './base.js';
+
+/**
+ * Base class for all core infrastructure errors.
+ * These are generally fatal and indicate a misconfiguration or 
+ * environment setup failure.
+ */
+export abstract class CoreBaseError extends SourceOGBaseError {
+  public readonly category: ErrorCategory = 'core';
+  public readonly severity: ErrorSeverity = 'critical';
+  public readonly isFatal = true;
+}
+
+/**
+ * Thrown when a required environment variable is missing or invalid.
+ * 
+ * @example
+ * if (!process.env.DATABASE_URL) {
+ *   throw new EnvError('DATABASE_URL', 'required for connection');
+ * }
+ */
+export class EnvError extends CoreBaseError {
+  public readonly code = 'ENV_INVALID';
+
+  constructor(
+    public readonly key: string,
+    reason: string = 'is missing or invalid'
+  ) {
+    super(`Environment Error: "${key}" ${reason}.`, {
+      metadata: { key, reason },
+    });
+  }
+
+  public override get resolutionHint(): string {
+    return `Verify the environment variable "${this.key}" is set in your .env file or deployment environment.`;
+  }
+}
+
+/**
+ * Thrown when a configuration file (e.g., sourceog.config.ts) fails to parse
+ * or contains invalid schema values.
+ */
+export class ConfigError extends CoreBaseError {
+  public readonly code = 'CONFIG_INVALID';
+
+  constructor(
+    public readonly configPath: string,
+    message: string,
+    public readonly invalidKey?: string
+  ) {
+    super(`Configuration Error in "${configPath}": ${message}`, {
+      metadata: { configPath, invalidKey },
+    });
+  }
+
+  public override get resolutionHint(): string {
+    return `Check the syntax and values in "${this.configPath}".` + 
+           (this.invalidKey ? ` Focus on the key "${this.invalidKey}".` : '');
+  }
+}
+
+/**
+ * Thrown when an internal invariant is violated.
+ * This usually indicates a logic error in the codebase or an 
+ * "impossible" state being reached.
+ * 
+ * Ideally should never be caught in production; use for dev-time assertions.
+ */
+export class InvariantError extends CoreBaseError {
+  public readonly code = 'INVARIANT_VIOLATION';
+
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(`Invariant Violation: ${message}`, {
+      metadata: details,
+    });
+  }
+
+  public override get resolutionHint(): string {
+    return 'This is likely an internal bug. Please report this issue to the SourceOG team.';
+  }
+}
+
+/**
+ * Generic core error for infrastructure failures not covered by specific types.
+ */
+export class CoreError extends CoreBaseError {
+  public readonly code = 'CORE_FAILURE';
+
+  constructor(
+    codeOverride: string,
+    message: string,
+    metadata?: Record<string, unknown>
+  ) {
+    super(message, { metadata });
+    (this as any).code = codeOverride;
+  }
+}
+
+
+--- src\errors\index.ts ---
+
+// packages/genbook/src/errors/index.ts
+// Alibaba CTO 2027 Standard — Error Aggregator
+
+export { SourceOGBaseError } from './base.js';
+export type { ErrorCategory, ErrorSeverity } from './base.js';
+
+export * from './core.errors.js';
+export * from './render.errors.js';
+export * from './transpile.errors.js';
+export * from './manifest.errors.js';
+export * from './worker.errors.js';
+
+
+--- src\errors\manifest.errors.ts ---
+
+// packages/genbook/src/errors/manifest.errors.ts
+// Alibaba CTO 2027 Standard — Manifest & Asset Resolution Errors
+
+import { SourceOGBaseError, ErrorCategory, ErrorSeverity } from './base.js';
+
+/**
+ * Base class for errors related to module manifests, asset maps, and routing metadata.
+ */
+export abstract class ManifestBaseError extends SourceOGBaseError {
+  public readonly category: ErrorCategory = 'manifest';
+  public readonly severity: ErrorSeverity = 'critical';
+  public readonly isFatal = true;
+}
+
+/**
+ * Thrown when a manifest path resolution attempts to traverse outside the
+ * designated project root (e.g., "../../../etc/passwd").
+ * This is a critical security violation.
+ */
+export class ManifestTraversalError extends ManifestBaseError {
+  public readonly code = 'MANIFEST_PATH_TRAVERSAL';
+
+  constructor(
+    public readonly routeFile: string,
+    public readonly projectRoot: string
+  ) {
+    super(
+      `Security violation: Manifest resolution for "${routeFile}" attempted to traverse outside project root "${projectRoot}".`,
+      { metadata: { routeFile, projectRoot } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return 'Ensure route files are located within the project root and do not contain invalid segments like "..".';
+  }
+}
+
+/**
+ * Thrown when a manifest file is physically missing from the disk
+ * at the expected location.
+ */
+export class ManifestNotFoundError extends ManifestBaseError {
+  public readonly code = 'MANIFEST_MISSING';
+
+  constructor(
+    public readonly manifestPath: string,
+    public readonly routeId?: string
+  ) {
+    super(
+      `Manifest file not found at "${manifestPath}"${routeId ? ` for route "${routeId}"` : ''}.`,
+      { metadata: { manifestPath, routeId } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return `Run the build command to generate manifests, or verify the path "${this.manifestPath}".`;
+  }
+}
+
+/**
+ * Thrown when a manifest file contains invalid JSON or fails schema validation
+ * (e.g., missing "id" or "chunks" fields in a client reference).
+ */
+export class ManifestParseError extends ManifestBaseError {
+  public readonly code = 'MANIFEST_PARSE_FAILED';
+
+  constructor(
+    public readonly manifestPath: string,
+    public readonly reason: string,
+    cause?: unknown
+  ) {
+    super(
+      `Failed to parse manifest "${manifestPath}": ${reason}`,
+      { cause, metadata: { manifestPath, reason } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return `Validate the JSON structure of "${this.manifestPath}". Ensure it matches the SourceOG Client Reference Manifest schema.`;
+  }
+}
+
+/**
+ * Thrown when a client reference entry is invalid or incomplete
+ * (e.g., missing export name or module ID).
+ */
+export class ManifestEntryError extends ManifestBaseError {
+  public readonly code = 'MANIFEST_ENTRY_INVALID';
+
+  constructor(
+    public readonly manifestPath: string,
+    public readonly entryKey: string,
+    public readonly missingField: string
+  ) {
+    super(
+      `Invalid manifest entry "${entryKey}" in "${manifestPath}". Missing required field: "${missingField}".`,
+      { metadata: { manifestPath, entryKey, missingField } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return `Check the build output for the module associated with "${this.entryKey}". The compiler may have failed to generate a valid reference ID.`;
+  }
+}
+
+
+--- src\errors\render.errors.ts ---
+
+// packages/genbook/src/errors/render.errors.ts
+// Alibaba CTO 2027 Standard — Rendering Pipeline Errors
+
+import { SourceOGBaseError, ErrorCategory, ErrorSeverity } from './base.js';
+
+/**
+ * Base class for errors occurring during the rendering lifecycle.
+ * These errors generally affect a specific route or request but are not
+ * fatal to the entire process.
+ */
+export abstract class RenderBaseError extends SourceOGBaseError {
+  public readonly category: ErrorCategory = 'render';
+  public readonly severity: ErrorSeverity = 'high';
+  public readonly isFatal: boolean = false;
+}
+
+/**
+ * Thrown when a render operation exceeds the allocated time budget.
+ * Critical for maintaining Time-To-Interactive (TTI) SLAs.
+ */
+export class RenderTimeoutError extends RenderBaseError {
+  public readonly code = 'RENDER_TIMEOUT';
+
+  constructor(
+    public readonly routeId: string,
+    public readonly timeoutMs: number,
+    public readonly segmentId?: string
+  ) {
+    super(
+      `Render timed out after ${timeoutMs}ms for route "${routeId}"${segmentId ? ` (segment: ${segmentId})` : ''}.`,
+      { metadata: { routeId, timeoutMs, segmentId } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return `Profile the component tree for "${this.routeId}". Check for synchronous heavy computations or unawaited promises in data fetching.`;
+  }
+}
+
+/**
+ * Thrown when a render stream is aborted prematurely.
+ * This often happens if the client disconnects or the server initiates a shutdown.
+ */
+export class RenderAbortError extends RenderBaseError {
+  public readonly code = 'RENDER_ABORTED';
+
+  constructor(
+    public readonly routeId: string,
+    public readonly reason: 'client_disconnect' | 'server_shutdown' | 'unknown'
+  ) {
+    super(`Render aborted for route "${routeId}" due to ${reason}.`, {
+      metadata: { routeId, reason },
+    });
+  }
+
+  public override get resolutionHint(): string {
+    if (this.reason === 'client_disconnect') {
+      return 'No action required. The client navigated away before rendering completed.';
+    }
+    return 'Check server health logs. The render was interrupted by a system signal.';
+  }
+}
+
+/**
+ * Thrown when a React component throws during server-side rendering.
+ */
+export class ComponentRenderError extends RenderBaseError {
+  public readonly code = 'COMPONENT_FAILURE';
+
+  constructor(
+    public readonly routeId: string,
+    public readonly componentTrace: string,
+    cause: unknown
+  ) {
+    const errorMessage = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Component failed to render in route "${routeId}": ${errorMessage}`,
+      { cause, metadata: { routeId, componentTrace } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return `Review the component stack trace. Error originated near: "${this.componentTrace}".`;
+  }
+}
+
+/**
+ * Thrown when the RSC (React Server Components) flight stream encounters
+ * serialization issues (e.g., non-serializable props).
+ */
+export class FlightSerializationError extends RenderBaseError {
+  public readonly code = 'FLIGHT_SERIALIZE_FAILURE';
+
+  constructor(
+    public readonly routeId: string,
+    public readonly invalidProperty: string
+  ) {
+    super(
+      `Failed to serialize props for route "${routeId}". Property "${invalidProperty}" is not serializable.`,
+      { metadata: { routeId, invalidProperty } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return `Ensure all props passed from server to client components are JSON-serializable (strings, numbers, arrays, plain objects). Check "${this.invalidProperty}".`;
+  }
+}
+
+/**
+ * Thrown when the rendering engine encounters an invalid state or configuration
+ * (e.g., missing Manifest).
+ */
+export class RenderConfigError extends RenderBaseError {
+  public readonly code = 'RENDER_CONFIG_INVALID';
+  public readonly severity: ErrorSeverity = 'critical';
+  public readonly isFatal = true;
+
+  constructor(message: string, metadata?: Record<string, unknown>) {
+    super(message, { metadata });
+  }
+}
+
+
+--- src\errors\transpile.errors.ts ---
+
+// packages/genbook/src/errors/transpile.errors.ts
+// Alibaba CTO 2027 Standard — Transpilation & Module Loading Errors
+
+import { SourceOGBaseError, ErrorCategory, ErrorSeverity } from './base.js';
+
+/**
+ * Base class for errors occurring during the transformation or loading of modules.
+ * These errors indicate a build-time or runtime transpilation failure.
+ */
+export abstract class TranspileBaseError extends SourceOGBaseError {
+  public readonly category: ErrorCategory = 'transpile';
+  public readonly severity: ErrorSeverity = 'high';
+  public readonly isFatal: boolean = false;
+}
+
+/**
+ * Thrown when a specific transpiler strategy (e.g., esbuild, swc, sucrase) fails
+ * to transform a file.
+ */
+export class TransformStrategyError extends TranspileBaseError {
+  public readonly code = 'TRANSFORM_STRATEGY_FAILED';
+
+  constructor(
+    public readonly strategy: string,
+    public readonly filepath: string,
+    cause: unknown
+  ) {
+    const errorMessage = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Strategy "${strategy}" failed to transform "${filepath}": ${errorMessage}`,
+      { cause, metadata: { strategy, filepath } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    const hints: Record<string, string> = {
+      esbuild: 'Check for unsupported syntax or ensure "esbuild" is installed correctly.',
+      swc: 'Check for malformed decorators or ensure "@swc/core" bindings are not missing.',
+      sucrase: 'Check for ambiguous syntax or ensure "sucrase" is installed.',
+      typescript: 'Check for type errors or unsupported TypeScript version features.',
+    };
+    return hints[this.strategy] ?? `Verify the source file "${this.filepath}" for syntax errors.`;
+  }
+}
+
+/**
+ * Thrown when a module cannot be loaded, typically due to missing files or
+ * unresolved imports after transpilation.
+ */
+export class ModuleLoadError extends TranspileBaseError {
+  public readonly code = 'MODULE_LOAD_FAILED';
+
+  constructor(
+    public readonly specifier: string,
+    public readonly filepath: string,
+    cause: unknown
+  ) {
+    const errorMessage = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Failed to load module "${specifier}" from "${filepath}": ${errorMessage}`,
+      { cause, metadata: { specifier, filepath } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return `Verify that the file exists at "${this.filepath}" and exports are correct. Check for circular dependencies.`;
+  }
+}
+
+/**
+ * Thrown when an import specifier cannot be resolved to a file path
+ * (e.g., bare specifiers without a package.json or invalid relative paths).
+ */
+export class ResolverError extends TranspileBaseError {
+  public readonly code = 'MODULE_RESOLVE_FAILED';
+  public readonly isFatal = true; // Resolution failures usually block execution entirely
+
+  constructor(
+    public readonly specifier: string,
+    public readonly contextPath: string
+  ) {
+    super(
+      `Cannot resolve module "${specifier}" from "${contextPath}".`,
+      { metadata: { specifier, contextPath } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    if (this.specifier.startsWith('.')) {
+      return `Verify the relative path is correct. Did you miss a file extension (e.g., .js, .tsx)?`;
+    }
+    return `Ensure the package "${this.specifier}" is installed in "node_modules" and has valid "exports" in package.json.`;
+  }
+}
+
+/**
+ * Thrown when the system cannot find a suitable transpiler for a given file extension
+ * or environment configuration.
+ */
+export class NoTranspilerError extends TranspileBaseError {
+  public readonly code = 'NO_TRANSPILER_AVAILABLE';
+  public readonly severity: ErrorSeverity = 'critical';
+
+  constructor(
+    public readonly extension: string,
+    public readonly attemptedStrategies: string[]
+  ) {
+    super(
+      `No transpiler available for extension "${extension}". Attempted strategies: [${attemptedStrategies.join(', ')}].`,
+      { metadata: { extension, attemptedStrategies } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return `Install a transformer like "tsx", "esbuild", or "sucrase". Alternatively, use Node.js v22+ with "--experimental-transform-types".`;
+  }
+}
+
+
+--- src\errors\worker.errors.ts ---
+
+// packages/genbook/src/errors/worker.errors.ts
+// Alibaba CTO 2027 Standard — Worker & Orchestration Errors
+
+import { SourceOGBaseError, ErrorCategory, ErrorSeverity } from './base.js';
+
+/**
+ * Base class for errors related to worker_threads, process management,
+ * and thread pool orchestration.
+ */
+export abstract class WorkerBaseError extends SourceOGBaseError {
+  public readonly category: ErrorCategory = 'worker';
+  public readonly severity: ErrorSeverity = 'high';
+  public readonly isFatal = false;
+}
+
+/**
+ * Thrown when the worker pool queue is saturated and cannot accept new requests.
+ * Implements "Admission Control" to prevent cascading failures.
+ */
+export class WorkerPoolExhaustedError extends WorkerBaseError {
+  public readonly code = 'POOL_EXHAUSTED';
+
+  constructor(
+    public readonly queueDepth: number,
+    public readonly maxWorkers: number
+  ) {
+    super(
+      `Worker pool exhausted. Queue is full (depth: ${queueDepth}) with ${maxWorkers} active workers.`,
+      { metadata: { queueDepth, maxWorkers } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return 'Optimize component render times, increase SOURCEOG_RSC_WORKERS count, or implement request throttling at the edge.';
+  }
+}
+
+/**
+ * Thrown when the system fails to spawn a new worker thread.
+ * This can happen due to resource limits (memory, file descriptors) or missing entry files.
+ */
+export class WorkerSpawnError extends WorkerBaseError {
+  public readonly code = 'WORKER_SPAWN_FAILED';
+  public readonly severity: ErrorSeverity = 'critical';
+
+  constructor(
+    public readonly workerPath: string,
+    cause: unknown
+  ) {
+    const errorMessage = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Failed to spawn worker at "${workerPath}": ${errorMessage}`,
+      { cause, metadata: { workerPath } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return `Verify the file "${this.workerPath}" exists and is valid JavaScript. Check system memory limits (ulimit).`;
+  }
+}
+
+/**
+ * Thrown when a worker process exits unexpectedly during operation.
+ */
+export class WorkerUnexpectedExitError extends WorkerBaseError {
+  public readonly code = 'WORKER_UNEXPECTED_EXIT';
+
+  constructor(
+    public readonly workerId: number,
+    public readonly exitCode: number | null,
+    public readonly signal: string | null
+  ) {
+    super(
+      `Worker ${workerId} exited unexpectedly with code ${exitCode ?? 'null'} (signal: ${signal ?? 'none'}).`,
+      { metadata: { workerId, exitCode, signal } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    if (this.signal === 'SIGKILL' || this.signal === 'SIGABRT') {
+      return 'Worker was likely killed by the OS (Out of Memory). Check memory consumption.';
+    }
+    return 'Check stderr logs for unhandled exceptions or uncaught promise rejections inside the worker.';
+  }
+}
+
+/**
+ * Thrown when a request times out while waiting for an available worker slot
+ * (Queue Timeout), distinct from the render execution timeout.
+ */
+export class WorkerQueueTimeoutError extends WorkerBaseError {
+  public readonly code = 'WORKER_QUEUE_TIMEOUT';
+
+  constructor(
+    public readonly routeId: string,
+    public readonly waitTimeMs: number
+  ) {
+    super(
+      `Request for route "${routeId}" timed out after waiting ${waitTimeMs}ms for an available worker.`,
+      { metadata: { routeId, waitTimeMs } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return 'The server is under high load. Consider increasing queue timeout (SOURCEOG_RSC_TIMEOUT_MS) or vertical scaling.';
+  }
+}
+
+/**
+ * Thrown when the message channel between main thread and worker fails
+ * (e.g., serialization error, port closed).
+ */
+export class WorkerCommunicationError extends WorkerBaseError {
+  public readonly code = 'WORKER_COMM_FAILURE';
+
+  constructor(
+    public readonly workerId: number,
+    public readonly reason: string
+  ) {
+    super(
+      `Communication failed with worker ${workerId}: ${reason}`,
+      { metadata: { workerId, reason } }
+    );
+  }
+
+  public override get resolutionHint(): string {
+    return 'This usually indicates a serialization issue (e.g., passing a function or large buffer) in postMessage.';
+  }
+}
+
+
+--- src\types\index.ts ---
+
+// packages/genbook/src/types/index.ts
+// Alibaba CTO 2027 Standard — Public Types Aggregator
+
+// ---------------------------------------------------------------------------
+// Runtime Capabilities & Detection
+// ---------------------------------------------------------------------------
+export * from './runtime.js';
+
+// ---------------------------------------------------------------------------
+// Manifest Contracts
+// ---------------------------------------------------------------------------
+export * from './manifest.js';
+
+// ---------------------------------------------------------------------------
+// Generic Utility Types
+// ---------------------------------------------------------------------------
+export * from './utils.js';
+
+
+--- src\types\manifest.ts ---
+
+// packages/genbook/src/types/manifest.ts
+// Alibaba CTO 2027 Standard — Manifest Type Contracts
+
+/**
+ * Describes a single client reference entry within the manifest.
+ * This maps a server-facing module reference to its client-side chunk.
+ */
+export interface ClientManifestEntry {
+  /** The unique module identifier (e.g., "app/page.tsx"). */
+  id: string;
+
+  /** The export name used to access the component (e.g., "default", "Header"). */
+  name: string;
+
+  /** List of chunk files required to load this component on the client. */
+  chunks: string[];
+
+  /** Indicates if the component is asynchronously loaded. */
+  async?: boolean;
+
+  /** Optional path to the source file for debugging or source maps. */
+  filepath?: string;
+}
+
+/**
+ * The raw structure of the client-reference-manifest.json file.
+ * This can be a flat map or a nested object containing a registry.
+ */
+export type ClientReferenceManifestInput = 
+  | Record<string, ClientManifestEntry | unknown>
+  | {
+      registry?: Record<string, ClientManifestEntry | unknown>;
+      [key: string]: unknown;
+    };
+
+/**
+ * The normalized, validated manifest structure used internally by the renderer.
+ * Keys are composite identifiers: `${id}#${name}`.
+ */
+export type NormalizedClientManifest = Record<string, ClientManifestEntry>;
+
+/**
+ * Describes server action references (React Server Actions).
+ * Used for mapping action IDs to server-side functions.
+ */
+export interface ServerManifestEntry {
+  id: string;
+  chunks: string[];
+  name: string;
+  async?: boolean;
+}
+
+export type ServerReferenceManifest = Record<string, ServerManifestEntry>;
+
+/**
+ * Describes a static asset (CSS, Font, Image) associated with a route.
+ */
+export interface AssetManifestEntry {
+  /** The logical module path. */
+  module?: string;
+  
+  /** The resolved public URL path. */
+  href: string;
+
+  /** Type of asset for preload/preload hints. */
+  type: 'style' | 'script' | 'font' | 'image';
+}
+
+/**
+ * The composite manifest structure passed to the render context.
+ */
+export interface RouteManifests {
+  clientReference: NormalizedClientManifest;
+  serverReference?: ServerReferenceManifest;
+  assets?: AssetManifestEntry[];
+}
+
+
+--- src\types\runtime.ts ---
+
+// packages/genbook/src/types/runtime.ts
+// Alibaba CTO 2027 Standard — Runtime Detection & Capabilities
+
+/**
+ * Supported runtime environments for the SourceOG engine.
+ */
+export type SourceOGRuntimeName =
+  | 'node'
+  | 'bun'
+  | 'deno'
+  | 'edge' // Generic Edge Runtime (Cloudflare Workers, etc.)
+  | 'vercel-node'; // Vercel Serverless Function (Node runtime)
+
+/**
+ * Standard environment modes.
+ */
+export type EnvironmentMode = 'development' | 'production' | 'test';
+
+/**
+ * Describes the capabilities of the detected runtime.
+ * Used by the Transpiler and Orchestrator to make intelligent decisions
+ * (e.g., skipping TSX transformation in Bun).
+ */
+export interface RuntimeCapabilities {
+  /** The name of the runtime environment. */
+  name: SourceOGRuntimeName;
+  
+  /** The version string of the runtime (e.g., "v20.11.0"). */
+  version: string;
+
+  /** True if the runtime supports TypeScript/TSX natively without transpilation. */
+  supportsNativeTypeScript: boolean;
+
+  /** True if the runtime supports Web Standard APIs (fetch, Request, Response) globally. */
+  supportsWebAPIs: boolean;
+
+  /** True if the runtime uses worker_threads (Node/Bun) vs Isolates (Edge). */
+  supportsWorkerThreads: boolean;
+
+  /** The detected NODE_ENV or equivalent. */
+  mode: EnvironmentMode;
+}
+
+// ---------------------------------------------------------------------------
+// Runtime Detection Logic
+// ---------------------------------------------------------------------------
+
+/**
+ * Detects the current runtime environment.
+ * Optimized for performance and accuracy across Node, Bun, and Deno.
+ */
+export function detectRuntimeCapabilities(): RuntimeCapabilities {
+  // 1. Detect Bun (Prioritize due to specific global)
+  // @ts-expect-error - Bun global
+  if (typeof globalThis.Bun !== 'undefined') {
+    // @ts-expect-error - Bun global
+    const version = typeof Bun.version === 'string' ? Bun.version : 'unknown';
+    return {
+      name: 'bun',
+      version,
+      supportsNativeTypeScript: true, // Bun has native TSX support
+      supportsWebAPIs: true,
+      supportsWorkerThreads: true,
+      mode: getMode(),
+    };
+  }
+
+  // 2. Detect Deno
+  // @ts-expect-error - Deno global
+  if (typeof globalThis.Deno !== 'undefined') {
+    // @ts-expect-error - Deno global
+    const version = typeof Deno.version?.deno === 'string' ? Deno.version.deno : 'unknown';
+    return {
+      name: 'deno',
+      version,
+      supportsNativeTypeScript: true, // Deno has native TS support
+      supportsWebAPIs: true,
+      supportsWorkerThreads: false, // Deno uses Web Workers, not node:worker_threads
+      mode: getMode(),
+    };
+  }
+
+  // 3. Detect Node.js (Default for most server environments)
+  // Check process.versions for node vs edge/V8 isolates
+  if (process.versions?.node) {
+    const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+    
+    // Check for experimental transform types support (Node 22.6+)
+    // Note: We check version here; actual flag presence is checked by transpiler.
+    const supportsNativeTypeScript = nodeMajor >= 22;
+
+    return {
+      name: 'node',
+      version: process.versions.node,
+      supportsNativeTypeScript,
+      supportsWebAPIs: nodeMajor >= 18, // Node 18+ has global fetch
+      supportsWorkerThreads: true,
+      mode: getMode(),
+    };
+  }
+
+  // 4. Fallback for Edge Runtimes (No process.versions, no Bun/Deno globals)
+  return {
+    name: 'edge',
+    version: 'unknown',
+    supportsNativeTypeScript: false,
+    supportsWebAPIs: true, // Edge implies Web Standards
+    supportsWorkerThreads: false,
+    mode: getMode(),
+  };
+}
+
+/**
+ * Determines the current environment mode.
+ * Resilient to missing process.env (Edge runtimes).
+ */
+function getMode(): EnvironmentMode {
+  // Try process.env (Node/Bun)
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV) {
+    const env = process.env.NODE_ENV;
+    if (env === 'test' || process.env.VITEST || process.env.JEST_WORKER_ID) return 'test';
+    if (env === 'production') return 'production';
+    return 'development';
+  }
+
+  // Try Deno.env
+  // @ts-expect-error - Deno global
+  if (typeof globalThis.Deno !== 'undefined' && Deno.env) {
+    // @ts-expect-error - Deno global
+    const env = Deno.env.get('NODE_ENV') || Deno.env.get('DENO_ENV');
+    if (env === 'production') return 'production';
+    if (env === 'test') return 'test';
+    return 'development';
+  }
+
+  // Default assumption for Edge is production
+  return 'production';
+}
+
+
+--- src\types\utils.ts ---
+
+// packages/genbook/src/types/utils.ts
+// Alibaba CTO 2027 Standard — Generic Utility Types
+
+/**
+ * Allows a type to be either the raw value or a Promise resolving to that value.
+ */
+export type MaybePromise<T> = T | Promise<T>;
+
+/**
+ * Recursively makes all properties in an object optional.
+ */
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
+/**
+ * Prevents TypeScript from inferring the type from a value.
+ */
+export type NoInfer<T> = [T][T extends any ? 0 : never];
+
+/**
+ * Marks specific keys of an object as optional, leaving others required.
+ */
+export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
+/**
+ * Extracts the type of the items in an array.
+ */
+export type ArrayItem<T> = T extends Array<infer I> ? I : never;
+
+/**
+ * Ensures a type is not `null` or `undefined`.
+ */
+export type NonNullable<T> = T extends null | undefined ? never : T;
+
+/**
+ * Configuration options for LRU Cache implementations across the system.
+ */
+export interface LRUOptions {
+  /** Maximum number of items to hold. */
+  max: number;
+
+  /** Time-to-live in milliseconds. (Optional: Infinity if omitted) */
+  ttlMs?: number;
+
+  /** Function to call when an item is evicted. */
+  dispose?: (key: string, value: unknown) => void;
+}
+
+
+
+--- src\utils\env.ts ---
+
+// packages/genbook/src/utils/env.ts
+// Alibaba CTO 2027 Standard — Environment Detection Helpers
+
+import type { SourceOGRuntimeName, EnvironmentMode } from '../types/runtime.js';
+
+// ---------------------------------------------------------------------------
+// Runtime Detection (Constants)
+// ---------------------------------------------------------------------------
+
+/**
+ * Detects if running inside Bun.
+ * Bun has specific globals and behaves differently regarding transpilation.
+ */
+export const isBun: boolean = typeof (globalThis as any).Bun !== 'undefined';
+
+/**
+ * Detects if running inside Deno.
+ * Deno has native TypeScript support and Web Standard APIs.
+ */
+export const isDeno: boolean = typeof (globalThis as any).Deno !== 'undefined';
+
+/**
+ * Detects if running inside Node.js.
+ * Assumed true if not Bun or Deno and process.versions.node exists.
+ */
+export const isNode: boolean = !isBun && !isDeno && typeof process !== 'undefined' && !!process.versions?.node;
+
+/**
+ * Detects if running in an Edge Runtime (Cloudflare Workers, Vercel Edge, etc.).
+ * Typically characterized by lack of process.versions.node and presence of global caches.
+ * Note: For this package, we generally assume a full server environment, but this flag 
+ * helps identify restricted environments.
+ */
+export const isEdge: boolean = !isBun && !isDeno && !isNode;
+
+// ---------------------------------------------------------------------------
+// Version Extraction
+// ---------------------------------------------------------------------------
+
+function getVersion(): string {
+  if (isBun) return (globalThis as any).Bun.version ?? 'unknown';
+  if (isDeno) return (globalThis as any).Deno.version?.deno ?? 'unknown';
+  if (isNode) return process.versions.node;
+  return 'unknown';
+}
+
+/**
+ * The detected runtime version string.
+ */
+export const RUNTIME_VERSION: string = getVersion();
+
+/**
+ * The major version number of the runtime.
+ * Useful for feature flagging (e.g., Node 22 vs 20).
+ */
+export const RUNTIME_MAJOR: number = parseInt(RUNTIME_VERSION.split('.')[0], 10) || 0;
+
+/**
+ * The normalized name of the runtime.
+ */
+export const RUNTIME_NAME: SourceOGRuntimeName = isBun 
+  ? 'bun' 
+  : isDeno 
+    ? 'deno' 
+    : isNode 
+      ? 'node' 
+      : 'edge';
+
+// ---------------------------------------------------------------------------
+// Environment Mode Detection
+// ---------------------------------------------------------------------------
+
+function getMode(): EnvironmentMode {
+  // Check for test environments first
+  if (typeof process !== 'undefined') {
+    if (process.env.NODE_ENV === 'test') return 'test';
+    // Check for common test runners
+    if (process.env.VITEST || process.env.JEST_WORKER_ID) return 'test';
+    
+    // Standard NODE_ENV
+    if (process.env.NODE_ENV === 'production') return 'production';
+  }
+  
+  // Deno specific check
+  if (isDeno) {
+    const denoEnv = (globalThis as any).Deno.env;
+    const nodeEnv = denoEnv.get('NODE_ENV');
+    if (nodeEnv === 'test' || denoEnv.get('DENO_TEST')) return 'test';
+    if (nodeEnv === 'production') return 'production';
+  }
+
+  // Default to production for Edge/Unknown or if NODE_ENV is unset
+  return 'production';
+}
+
+/**
+ * The current environment mode.
+ */
+export const ENV_MODE: EnvironmentMode = getMode();
+
+/**
+ * Boolean helpers for environment mode.
+ */
+export const isProduction: boolean = ENV_MODE === 'production';
+export const isDevelopment: boolean = ENV_MODE === 'development';
+export const isTest: boolean = ENV_MODE === 'test';
+
+// ---------------------------------------------------------------------------
+// Feature Detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if the runtime supports native ESM imports.
+ * (Bun, Deno, Node 14+)
+ */
+export const supportsESM: boolean = isBun || isDeno || (isNode && RUNTIME_MAJOR >= 14);
+
+/**
+ * Check if the runtime can handle TypeScript/TSX natively.
+ * (Bun, Deno, Node 22.6+ with experimental flags)
+ * Note: This only checks version capability; actual flag presence is checked by transpiler.
+ */
+export const supportsNativeTypeScript: boolean = isBun || isDeno || (isNode && RUNTIME_MAJOR >= 22);
+
+/**
+ * Check if `node:worker_threads` is available.
+ */
+export const supportsWorkerThreads: boolean = isNode || isBun;
+
+
+--- src\utils\hashing.ts ---
+
+// packages/genbook/src/utils/hashing.ts
+// Alibaba CTO 2027 Standard — Deterministic Key Derivation
+
+import { createHash } from 'node:crypto';
+
+/**
+ * Generates a SHA256 hash for a given string input.
+ * 
+ * @param input - The string content to hash.
+ * @returns The full 64-character hex digest.
+ */
+export function sha256(input: string): string {
+  return createHash('sha256').update(input).digest('hex');
+}
+
+/**
+ * Generates a short, URL-safe ID derived from the input content.
+ * Useful for generating request IDs or short cache keys where collision risk is low.
+ * 
+ * @param input - The string content to hash.
+ * @param length - The length of the resulting ID (default: 16).
+ * @returns A shortened hex digest.
+ */
+export function shortId(input: string, length = 16): string {
+  // Default 16 chars provides 64 bits of entropy, sufficient for unique IDs in a single context.
+  return sha256(input).slice(0, length);
+}
+
+/**
+ * Derives a canonical, collision-resistant key from multiple string parts.
+ * Uses a delimiter to prevent collision attacks (e.g. "a" + "bc" vs "ab" + "c").
+ * 
+ * @param parts - Array of strings to combine into a key.
+ * @returns A SHA256 hash of the combined parts.
+ */
+export function deriveKey(...parts: string[]): string {
+  return sha256(parts.join('::'));
+}
+
+/**
+ * Derives a stable ID for a specific route pattern and parameter set.
+ * Ensures that route params are sorted for determinism.
+ * 
+ * @param routePattern - The route pattern (e.g., "/blog/[slug]").
+ * @param params - The route parameters object.
+ * @returns A 12-character unique ID for the route instance.
+ */
+export function deriveCanonicalRouteId(
+  routePattern: string,
+  params: Record<string, string | string[] | undefined>
+): string {
+  const sortedKeys = Object.keys(params).sort();
+  const stableParams = sortedKeys.map((key) => {
+    const value = params[key];
+    const serialized = Array.isArray(value) ? value.join('/') : (value ?? '');
+    return `${key}=${serialized}`;
+  }).join('&');
+
+  return shortId(`${routePattern}?${stableParams}`, 12);
+}
+
+/**
+ * Derives the render context key used to identify specific rendering states
+ * (e.g., canonical vs. intercepted routes).
+ * 
+ * @param pathname - The request pathname.
+ * @param intercepted - Whether the route is intercepted.
+ * @returns A 16-character unique context key.
+ */
+export function deriveRenderContextKey(
+  pathname: string,
+  intercepted: boolean
+): string {
+  return shortId(`canonical:${pathname}:${String(intercepted)}`, 16);
+}
+
+/**
+ * Computes a hash for a JSON-serializable object.
+ * Ensures keys are sorted for deterministic serialization.
+ * 
+ * @param obj - The object to hash.
+ * @returns A SHA256 hash of the object's stable JSON representation.
+ */
+export function hashObject(obj: object): string {
+  // JSON.stringify is deterministic in V8 for same key order, 
+  // but explicit sorting is safer for cross-runtime consistency.
+  const str = JSON.stringify(obj, Object.keys(obj).sort());
+  return sha256(str);
+}
+
+
+--- src\utils\index.ts ---
+
+// packages/genbook/src/utils/index.ts
+// Alibaba CTO 2027 Standard — Utilities Aggregator
+
+// ---------------------------------------------------------------------------
+// Cryptographic Hashing & Key Derivation
+// ---------------------------------------------------------------------------
+export * from './hashing.js';
+
+// ---------------------------------------------------------------------------
+// Runtime Environment Detection
+// ---------------------------------------------------------------------------
+export * from './env.js';
+
+// ---------------------------------------------------------------------------
+// Invariant & Assertion Helpers
+// ---------------------------------------------------------------------------
+export * from './invariant.js';
+
+
+--- src\utils\invariant.ts ---
+
+// packages/genbook/src/utils/invariant.ts
+// Alibaba CTO 2027 Standard — Invariant & Assertion Helpers
+
+import { InvariantError } from '../errors/index.js';
+import { isProduction } from './env.js';
+
+/**
+ * Asserts that a condition is truthy.
+ * If the condition is falsy, throws an `InvariantError`.
+ * 
+ * This function is **always active**, even in production.
+ * Use for critical invariants where a violation indicates a logic bug or 
+ * unrecoverable state.
+ * 
+ * @param condition - The condition to check.
+ * @param message - The error message (or a function returning the message).
+ * @param details - Optional structured metadata to attach to the error.
+ * @throws {InvariantError}
+ * 
+ * @example
+ * invariant(user.id, 'User ID is required for this operation');
+ * // If user.id is falsy, throws InvariantError.
+ */
+export function invariant(
+  condition: unknown,
+  message: string | (() => string),
+  details?: Record<string, unknown>
+): asserts condition {
+  if (condition) return;
+
+  const resolvedMessage = typeof message === 'function' ? message() : message;
+  throw new InvariantError(resolvedMessage, details);
+}
+
+/**
+ * Asserts that a condition is truthy, but only in development or test environments.
+ * In production, this function is a no-op (compiled out).
+ * 
+ * Useful for expensive checks or assumptions that should be validated during
+ * development but are too costly for production hot paths.
+ * 
+ * @param condition - The condition to check.
+ * @param message - The error message.
+ * @param details - Optional structured metadata.
+ * 
+ * @example
+ * // Validates complex state shape only in dev
+ * devInvariant(
+ *   state.items.length === state.total, 
+ *   'State mismatch: items length must equal total'
+ * );
+ */
+export function devInvariant(
+  condition: unknown,
+  message: string | (() => string),
+  details?: Record<string, unknown>
+): asserts condition {
+  if (isProduction) return;
+  if (condition) return;
+
+  const resolvedMessage = typeof message === 'function' ? message() : message;
+  throw new InvariantError(resolvedMessage, details);
+}
+
+/**
+ * Enforces exhaustiveness checking in switch statements.
+ * Ensures that all possible cases are handled at compile time.
+ * At runtime, throws an error if an unhandled case slips through.
+ * 
+ * @param value - The value that should have been handled.
+ * @throws {InvariantError}
+ * 
+ * @example
+ * type Action = 'create' | 'update' | 'delete';
+ * switch (action) {
+ *   case 'create': ...
+ *   case 'update': ...
+ *   case 'delete': ...
+ *   default: exhaustiveCheck(action);
+ * }
+ */
+export function exhaustiveCheck(value: never, details?: Record<string, unknown>): never {
+  throw new InvariantError(`Unhandled case: ${JSON.stringify(value)}`, details);
+}
+
+/**
+ * Asserts that a value is never `null` or `undefined`.
+ * Useful for refining types after a loose check.
+ * 
+ * @param value - The value to check.
+ * @param message - The error message if null/undefined.
+ * @throws {InvariantError}
+ * 
+ * @example
+ * const user = users.find(u => u.id === id);
+ * assertDefined(user, 'User not found'); // user is now typed as User, not User | undefined
+ */
+export function assertDefined<T>(
+  value: T | null | undefined,
+  message: string | (() => string)
+): asserts value is T {
+  if (value !== null && value !== undefined) return;
+  
+  const resolvedMessage = typeof message === 'function' ? message() : message;
+  throw new InvariantError(resolvedMessage);
+}
+

@@ -4,11 +4,12 @@
   "type": "module",
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "tsx packages/sourceog-cli/src/bin.ts dev examples/app-basic",
-    "build": "tsx packages/sourceog-cli/src/bin.ts build examples/app-basic",
-    "start": "tsx packages/sourceog-cli/src/bin.ts start examples/app-basic",
-    "export": "tsx packages/sourceog-cli/src/bin.ts export examples/app-basic",
-    "verify": "tsx packages/sourceog-cli/src/bin.ts verify examples/app-basic",
+    "dev": "tsx packages/sourceog/src/bin.ts dev examples/app-basic",
+    "build": "tsx packages/sourceog/src/bin.ts build examples/app-basic",
+    "start": "tsx packages/sourceog/src/bin.ts start examples/app-basic",
+    "export": "tsx packages/sourceog/src/bin.ts export examples/app-basic",
+    "verify": "tsx packages/sourceog/src/bin.ts verify examples/app-basic",
+    "audit": "tsx packages/sourceog/src/bin.ts audit .",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.base.json"

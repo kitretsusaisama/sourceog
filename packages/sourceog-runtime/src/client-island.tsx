@@ -1,5 +1,4 @@
 import React from "react";
-import path from "node:path";
 import type { ClientReferenceManifestRegistryEntry } from "./contracts.js";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +65,31 @@ function normalizeSpecifier(value: string): string {
     .toLowerCase();
 }
 
+function resolveRelativeModulePath(parentFile: string, moduleId: string): string {
+  const normalizedParent = parentFile.replaceAll("\\", "/");
+  const normalizedModule = moduleId.replaceAll("\\", "/");
+
+  if (!normalizedModule.startsWith(".")) {
+    return normalizedModule;
+  }
+
+  const segments = normalizedParent.split("/");
+  segments.pop();
+
+  for (const part of normalizedModule.split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      segments.pop();
+      continue;
+    }
+    segments.push(part);
+  }
+
+  return segments.join("/");
+}
+
 function resolveClientReferenceEntry(
   moduleId: string,
   exportName: string,
@@ -79,7 +103,7 @@ function resolveClientReferenceEntry(
   const normalizedModuleId = normalizeSpecifier(moduleId);
   const parentFile = runtimeGlobals.__SOURCEOG_RSC_PARENT_MODULE_FILE__;
   const normalizedResolvedPath = parentFile
-    ? normalizeSpecifier(path.resolve(path.dirname(parentFile), moduleId))
+    ? normalizeSpecifier(resolveRelativeModulePath(parentFile, moduleId))
     : "";
 
   for (const [manifestKey, entry] of Object.entries(registry)) {

@@ -83,11 +83,16 @@ function arbitraryImportGraph(): fc.Arbitrary<ImportGraph> {
           .map((importedClientOnly) => ({ boundaryPath, importedClientOnly }))
       );
 
+      const serverImportsArbitrary = serverImportArbs.length > 0
+        ? fc.tuple(...serverImportArbs)
+        : fc.constant([] as Array<{ serverPath: string; importedBoundaries: string[] }>);
+
+      const boundaryImportsArbitrary = boundaryImportArbs.length > 0
+        ? fc.tuple(...boundaryImportArbs)
+        : fc.constant([] as Array<{ boundaryPath: string; importedClientOnly: string[] }>);
+
       return fc
-        .tuple(
-          fc.tuple(...(serverImportArbs.length > 0 ? serverImportArbs : [fc.constant([] as never[])])),
-          fc.tuple(...(boundaryImportArbs.length > 0 ? boundaryImportArbs : [fc.constant([] as never[])]))
-        )
+        .tuple(serverImportsArbitrary, boundaryImportsArbitrary)
         .map(([serverImports, boundaryImports]) => {
           // Build the server-side import map
           const serverImportMap = new Map<string, string[]>();

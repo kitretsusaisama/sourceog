@@ -1,0 +1,15 @@
+export {
+  defineSchedule,
+  defineAutomation,
+  defineWorkflow,
+  createAutomationManifest,
+  AutomationEngine,
+  type AutomationSchedule,
+  type AutomationContext,
+  type AutomationResult,
+  type SourceOGAutomation,
+  type AutomationManifest,
+  type AutomationManifestEntry,
+  type AutomationEventName,
+  type AutomationEvent,
+} from "@sourceog/platform";

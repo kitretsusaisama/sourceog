@@ -1,6 +1,7 @@
 {
   "name": "@sourceog/runtime",
   "version": "0.1.0",
+  "private": true,
   "description": "Core runtime types, error classes, response primitives, and interrupt system for SourceOG",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -8,14 +9,31 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     },
+    "./client-runtime": "./src/client-runtime.ts",
     "./client-island": "./src/client-island.tsx",
-    "./actions": "./src/actions.ts"
+    "./actions": "./src/actions.ts",
+    "./artifacts": "./src/artifacts.ts",
+    "./cache": "./src/cache.ts",
+    "./context": "./src/context.ts",
+    "./contracts": "./src/contracts.ts",
+    "./data-cache": "./src/data-cache.ts",
+    "./errors": "./src/errors.ts",
+    "./execution-plan": "./src/execution-plan.ts",
+    "./fetch": "./src/fetch.ts",
+    "./filesystem-cache-store": "./src/filesystem-cache-store.ts",
+    "./render-control": "./src/render-control.ts",
+    "./request": "./src/request.ts",
+    "./request-helpers": "./src/request-helpers.ts",
+    "./revalidate": "./src/revalidate.ts"
   },
   "files": ["dist"],
+  "dependencies": {
+    "@sourceog/genbook": "workspace:*"
+  },
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",

@@ -1,9 +1,12 @@
 import { spawn } from "node:child_process";
-import { existsSync, promises as fs, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, promises as fs, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   type ActionManifest,
   type AdapterManifest,
+  type ArtifactSignatureManifest,
   SOURCEOG_ERROR_CODES,
   SOURCEOG_MANIFEST_VERSION,
   SourceOGError,
@@ -13,8 +16,13 @@ import {
   type MilestoneDashboard,
   type ClientBoundaryManifest,
   type ClientReferenceManifest,
+  type DeploymentSignatureManifest,
   type DeploymentManifest,
   type DiagnosticsEnvelope,
+  type DoctorBaselineManifest,
+  type GovernanceAuditManifest,
+  type PolicyReplayManifest,
+  type ReleaseEvidenceIndex,
   type ParityBlockerCategory,
   type ParityScoreboard,
   type ParitySubsystemScore,
@@ -27,6 +35,8 @@ import {
 } from "@sourceog/runtime";
 import { getClientRuntimeScript } from "@sourceog/dev";
 import { buildApplication, type BuildResult } from "./build.js";
+import { writeReleaseEvidenceIndex, type ReleaseEvidenceArtifactPaths } from "./evidence.js";
+import { writeSupportMatrix } from "./support-matrix.js";
 
 export interface VerifyApplicationOptions {
   runTypecheck?: boolean;
@@ -45,6 +55,27 @@ export interface VerifyApplicationReport {
   artifactPaths: {
     parityScoreboard: string;
     milestoneDashboard: string;
+    supportMatrix: string;
+    releaseEvidenceIndex: string;
+  };
+}
+
+export interface PublishReadinessFinding {
+  severity: "error" | "warn";
+  category: "package-governance" | "public-api" | "cli" | "artifact";
+  message: string;
+  file?: string;
+}
+
+export interface PublishReadinessReport {
+  generatedAt: string;
+  workspaceRoot: string;
+  passed: boolean;
+  findings: PublishReadinessFinding[];
+  artifactPaths: {
+    auditFindings: string;
+    packageGovernance: string;
+    publishReadiness: string;
   };
 }
 
@@ -65,6 +96,12 @@ interface VerifiedBuildOutput {
   rscReferenceManifest: RscReferenceManifest;
   serverReferenceManifest: ServerReferenceManifest;
   actionManifest: ActionManifest;
+  artifactSignatureManifest?: ArtifactSignatureManifest;
+  deploymentSignatureManifest?: DeploymentSignatureManifest;
+  doctorBaselineManifest?: DoctorBaselineManifest;
+  governanceAuditManifest?: GovernanceAuditManifest;
+  policyReplayManifest?: PolicyReplayManifest;
+  releaseEvidenceIndex?: ReleaseEvidenceIndex;
 }
 
 interface MilestoneProgress {
@@ -223,6 +260,24 @@ export async function verifyBuildOutput(buildResult: BuildResult): Promise<Verif
   const rscReferenceManifest = manifests.rscReferenceManifest as unknown as RscReferenceManifest;
   const serverReferenceManifest = manifests.serverReferenceManifest as unknown as ServerReferenceManifest;
   const actionManifest = manifests.actionManifest as unknown as ActionManifest;
+  const artifactSignatureManifest = deploymentManifest.manifests.artifactSignatureManifest
+    ? await readJson<ArtifactSignatureManifest>(deploymentManifest.manifests.artifactSignatureManifest)
+    : undefined;
+  const deploymentSignatureManifest = deploymentManifest.manifests.deploymentSignatureManifest
+    ? await readJson<DeploymentSignatureManifest>(deploymentManifest.manifests.deploymentSignatureManifest)
+    : undefined;
+  const doctorBaselineManifest = deploymentManifest.manifests.doctorBaselineManifest
+    ? await readJson<DoctorBaselineManifest>(deploymentManifest.manifests.doctorBaselineManifest)
+    : undefined;
+  const governanceAuditManifest = deploymentManifest.manifests.governanceAuditManifest
+    ? await readJson<GovernanceAuditManifest>(deploymentManifest.manifests.governanceAuditManifest)
+    : undefined;
+  const policyReplayManifest = deploymentManifest.manifests.policyReplayManifest
+    ? await readJson<PolicyReplayManifest>(deploymentManifest.manifests.policyReplayManifest)
+    : undefined;
+  const releaseEvidenceIndex = deploymentManifest.manifests.releaseEvidenceIndexManifest
+    ? await readJson<ReleaseEvidenceIndex>(deploymentManifest.manifests.releaseEvidenceIndexManifest)
+    : undefined;
 
   if (deploymentManifest.routes.length === 0) {
     throw new SourceOGError(
@@ -326,6 +381,210 @@ export async function verifyBuildOutput(buildResult: BuildResult): Promise<Verif
     );
   }
 
+  if (!artifactSignatureManifest) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Deployment manifest does not reference an artifact signature manifest.",
+      {
+        deploymentManifestPath,
+      }
+    );
+  }
+
+  if (!doctorBaselineManifest) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Deployment manifest does not reference a doctor baseline manifest.",
+      {
+        deploymentManifestPath,
+      }
+    );
+  }
+
+  if (!deploymentSignatureManifest) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Deployment manifest does not reference a deployment signature manifest.",
+      {
+        deploymentManifestPath,
+      }
+    );
+  }
+
+  if (!governanceAuditManifest) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Deployment manifest does not reference a governance audit manifest.",
+      {
+        deploymentManifestPath,
+      }
+    );
+  }
+
+  if (deploymentManifest.manifests.controlPlaneManifest && !policyReplayManifest) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Deployment manifest does not reference a policy replay manifest.",
+      {
+        deploymentManifestPath,
+      }
+    );
+  }
+
+  for (const artifact of artifactSignatureManifest.artifacts) {
+    if (!existsSync(artifact.filePath)) {
+      throw new SourceOGError(
+        SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+        "Artifact signature manifest references a missing file.",
+        {
+          kind: artifact.kind,
+          filePath: artifact.filePath,
+        }
+      );
+    }
+
+    const content = await fs.readFile(artifact.filePath);
+    const sha256 = createHash("sha256").update(content).digest("hex");
+    if (sha256 !== artifact.sha256 || content.byteLength !== artifact.bytes) {
+      throw new SourceOGError(
+        SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+        "Artifact signature manifest integrity check failed.",
+        {
+          kind: artifact.kind,
+          filePath: artifact.filePath,
+          expectedSha256: artifact.sha256,
+          actualSha256: sha256,
+          expectedBytes: artifact.bytes,
+          actualBytes: content.byteLength,
+        }
+      );
+    }
+  }
+
+  if (
+    deploymentSignatureManifest.artifactSignatureManifestPath !== deploymentManifest.manifests.artifactSignatureManifest ||
+    deploymentSignatureManifest.deploymentManifestPath !== deploymentManifestPath
+  ) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Deployment signature manifest does not point at the active deployment and artifact signature manifests.",
+      {
+        deploymentSignatureManifestPath: deploymentManifest.manifests.deploymentSignatureManifest,
+        expectedArtifactSignatureManifestPath: deploymentManifest.manifests.artifactSignatureManifest,
+        expectedDeploymentManifestPath: deploymentManifestPath,
+      }
+    );
+  }
+
+  if (
+    deploymentSignatureManifest.signatures.compiler !== artifactSignatureManifest.signatures.compiler ||
+    deploymentSignatureManifest.signatures.runtime !== artifactSignatureManifest.signatures.runtime ||
+    deploymentSignatureManifest.signatures.deployment !== artifactSignatureManifest.signatures.deployment
+  ) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Deployment signature manifest does not match the signed artifact signature set.",
+      {
+        deploymentSignatureManifestPath: deploymentManifest.manifests.deploymentSignatureManifest,
+      }
+    );
+  }
+
+  if (
+    governanceAuditManifest.artifactPaths.artifactSignatureManifest !== deploymentManifest.manifests.artifactSignatureManifest ||
+    governanceAuditManifest.artifactPaths.deploymentSignatureManifest !== deploymentManifest.manifests.deploymentSignatureManifest ||
+    governanceAuditManifest.artifactPaths.doctorBaselineManifest !== deploymentManifest.manifests.doctorBaselineManifest ||
+    governanceAuditManifest.artifactPaths.routeOwnershipManifest !== deploymentManifest.manifests.routeOwnershipManifest ||
+    governanceAuditManifest.artifactPaths.cacheManifest !== deploymentManifest.manifests.cacheManifest ||
+    governanceAuditManifest.artifactPaths.routeGraphManifest !== deploymentManifest.manifests.routeGraphManifest ||
+    governanceAuditManifest.artifactPaths.deploymentManifest !== deploymentManifestPath
+  ) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Governance audit manifest does not point at the active release artifacts.",
+      {
+        governanceAuditManifestPath: deploymentManifest.manifests.governanceAuditManifest,
+      }
+    );
+  }
+
+  if (
+    !governanceAuditManifest.runtimeContract.artifactOnlyProduction ||
+    !governanceAuditManifest.runtimeContract.sourceProbingDisallowed ||
+    !governanceAuditManifest.runtimeContract.transpilerFallbackDisallowed ||
+    !governanceAuditManifest.laws.doctorLaw ||
+    !governanceAuditManifest.laws.replayLaw ||
+    !governanceAuditManifest.laws.policyLaw ||
+    !governanceAuditManifest.laws.runtimeLaw ||
+    !governanceAuditManifest.laws.governanceLaw
+  ) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Governance audit manifest reports a violated ADOSF product law.",
+      {
+        governanceAuditManifestPath: deploymentManifest.manifests.governanceAuditManifest,
+      }
+    );
+  }
+
+  if (
+    governanceAuditManifest.decisions.routeCount !== deploymentManifest.routes.length ||
+    governanceAuditManifest.decisions.ownershipEntryCount !== routeOwnershipManifest.entries.length ||
+    governanceAuditManifest.decisions.cacheEntryCount !== cacheManifest.entries.length ||
+    governanceAuditManifest.decisions.graphRouteCount !== routeGraphManifest.routes.length ||
+    governanceAuditManifest.decisions.graphNodeCount !== routeGraphManifest.nodes.length ||
+    governanceAuditManifest.decisions.actionCount !== actionManifest.entries.length
+  ) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Governance audit manifest decision counts are out of sync with the active artifacts.",
+      {
+        governanceAuditManifestPath: deploymentManifest.manifests.governanceAuditManifest,
+      }
+    );
+  }
+
+  if (!releaseEvidenceIndex) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Deployment manifest does not reference a release evidence index.",
+      {
+        deploymentManifestPath,
+      }
+    );
+  }
+
+  if (
+    releaseEvidenceIndex.artifacts.deploymentManifest !== deploymentManifestPath ||
+    releaseEvidenceIndex.artifacts.governanceAuditManifest !== deploymentManifest.manifests.governanceAuditManifest ||
+    releaseEvidenceIndex.artifacts.artifactSignatureManifest !== deploymentManifest.manifests.artifactSignatureManifest ||
+    releaseEvidenceIndex.artifacts.deploymentSignatureManifest !== deploymentManifest.manifests.deploymentSignatureManifest
+  ) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Release evidence index does not point at the active signed governance artifacts.",
+      {
+        releaseEvidenceIndexPath: deploymentManifest.manifests.releaseEvidenceIndexManifest,
+      }
+    );
+  }
+
+  if (
+    !releaseEvidenceIndex.laws.doctorLaw ||
+    !releaseEvidenceIndex.laws.replayLaw ||
+    !releaseEvidenceIndex.laws.policyLaw ||
+    !releaseEvidenceIndex.laws.runtimeLaw ||
+    !releaseEvidenceIndex.laws.governanceLaw
+  ) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      "Release evidence index reports a violated ADOSF product law.",
+      {
+        releaseEvidenceIndexPath: deploymentManifest.manifests.releaseEvidenceIndexManifest,
+      }
+    );
+  }
+
   if (!Array.isArray(diagnosticsManifest.issues)) {
     throw new SourceOGError(
       SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
@@ -354,6 +613,33 @@ export async function verifyBuildOutput(buildResult: BuildResult): Promise<Verif
         actionManifestPath: deploymentManifest.manifests.actionManifest
       }
     );
+  }
+
+  if (policyReplayManifest) {
+    if (
+      policyReplayManifest.controlPlaneManifestPath !== deploymentManifest.manifests.controlPlaneManifest ||
+      policyReplayManifest.tunerSnapshotManifestPath !== deploymentManifest.manifests.tunerSnapshotManifest
+    ) {
+      throw new SourceOGError(
+        SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+        "Policy replay manifest does not point at the active control-plane and tuner artifacts.",
+        {
+          policyReplayManifestPath: deploymentManifest.manifests.policyReplayManifest,
+          expectedControlPlaneManifestPath: deploymentManifest.manifests.controlPlaneManifest,
+          expectedTunerSnapshotManifestPath: deploymentManifest.manifests.tunerSnapshotManifest,
+        }
+      );
+    }
+
+    if (!Array.isArray(policyReplayManifest.reducerPhases) || policyReplayManifest.reducerPhases.length < 4) {
+      throw new SourceOGError(
+        SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+        "Policy replay manifest is missing reducer phases.",
+        {
+          policyReplayManifestPath: deploymentManifest.manifests.policyReplayManifest,
+        }
+      );
+    }
   }
 
   const browserClientReferenceManifestPath = path.join(buildResult.distRoot, "public", "_sourceog", "client-refs.json");
@@ -423,7 +709,13 @@ export async function verifyBuildOutput(buildResult: BuildResult): Promise<Verif
     clientBoundaryManifest,
     rscReferenceManifest,
     serverReferenceManifest,
-    actionManifest
+    actionManifest,
+    artifactSignatureManifest,
+    deploymentSignatureManifest,
+    doctorBaselineManifest,
+    governanceAuditManifest,
+    policyReplayManifest,
+    releaseEvidenceIndex,
   };
 }
 
@@ -447,29 +739,55 @@ export async function verifyApplication(
   const workspaceRoot = options.workspaceRoot ?? findWorkspaceRoot(cwd);
   let typecheckDurationMs: number | null = null;
   let testDurationMs: number | null = null;
+  let ranTypecheck = false;
+  let ranTests = false;
 
   if (options.runTypecheck !== false) {
-    const typecheckStartedAt = Date.now();
-    await runWorkspaceCommand(["typecheck"], workspaceRoot, options.stdio);
-    typecheckDurationMs = Date.now() - typecheckStartedAt;
+    const typecheckTarget = await resolveVerificationScriptTarget(cwd, workspaceRoot, "typecheck");
+    if (typecheckTarget) {
+      const typecheckStartedAt = Date.now();
+      await runWorkspaceCommand(["typecheck"], typecheckTarget, options.stdio);
+      typecheckDurationMs = Date.now() - typecheckStartedAt;
+      ranTypecheck = true;
+    }
   }
 
   if (options.runTests !== false) {
-    const testsStartedAt = Date.now();
-    await runWorkspaceCommand(["test"], workspaceRoot, options.stdio);
-    testDurationMs = Date.now() - testsStartedAt;
+    const testTarget = await resolveVerificationScriptTarget(cwd, workspaceRoot, "test");
+    if (testTarget) {
+      const testsStartedAt = Date.now();
+      await runWorkspaceCommand(["test"], testTarget, options.stdio);
+      testDurationMs = Date.now() - testsStartedAt;
+      ranTests = true;
+    }
   }
 
   const parityScoreboard = createParityScoreboard(buildResult, verifiedBuild, {
-    ranTypecheck: options.runTypecheck !== false,
-    ranTests: options.runTests !== false
+    ranTypecheck,
+    ranTests
   });
   const milestoneDashboard = createMilestoneDashboard(buildResult, verifiedBuild, {
     buildDurationMs,
     typecheckDurationMs,
     testDurationMs
   });
-  const artifactPaths = await writeVerificationArtifacts(buildResult.distRoot, parityScoreboard, milestoneDashboard);
+  const publishReadiness = await auditSourceogPublishReadiness(workspaceRoot);
+  const artifactPaths = await writeVerificationArtifacts(
+    workspaceRoot,
+    buildResult.distRoot,
+    verifiedBuild,
+    parityScoreboard,
+    milestoneDashboard,
+    publishReadiness,
+  );
+  const adosfReleaseGateFailures = await verifyAdosfReleaseGates(workspaceRoot);
+  if (adosfReleaseGateFailures.length > 0) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
+      `ADOSF release gates failed: ${adosfReleaseGateFailures.join(" | ")}`,
+      { adosfReleaseGateFailures }
+    );
+  }
 
   return {
     buildId: buildResult.buildId,
@@ -479,6 +797,222 @@ export async function verifyApplication(
     parityScoreboard,
     milestoneDashboard,
     artifactPaths
+  };
+}
+
+export async function verifyAdosfReleaseGates(workspaceRoot: string): Promise<string[]> {
+  const failures: string[] = [];
+  const productionRoots = [
+    path.join(workspaceRoot, "packages"),
+    path.join(workspaceRoot, "examples"),
+    path.join(workspaceRoot, "tests")
+  ];
+
+  const sourceFiles = productionRoots.flatMap((root) => collectFilesForGate(root));
+
+  for (const filePath of sourceFiles) {
+    const source = await readFileSafe(filePath);
+    if (source === null) {
+      continue;
+    }
+
+    if (/from\s+["'][^"']*archived\/pre-adosf\//.test(source) || /import\s+["'][^"']*archived\/pre-adosf\//.test(source)) {
+      failures.push(`archived import/reference detected in ${path.relative(workspaceRoot, filePath)}`);
+    }
+  }
+
+  const adosfOwnedFiles = collectFilesForGate(path.join(workspaceRoot, "packages", "genbook", "src"));
+  for (const filePath of adosfOwnedFiles) {
+    const source = await readFileSafe(filePath);
+    if (source === null) {
+      continue;
+    }
+
+    if (source.includes("throw new Error(")) {
+      failures.push(`raw throw new Error detected in ADOSF-owned file ${path.relative(workspaceRoot, filePath)}`);
+    }
+  }
+
+  const clientRuntimeFile = path.join(workspaceRoot, "packages", "sourceog-runtime", "src", "client-runtime.ts");
+  const clientRuntimeSource = await readFileSafe(clientRuntimeFile);
+  if (clientRuntimeSource !== null) {
+    if (clientRuntimeSource.includes("document.body.innerHTML")) {
+      failures.push("canonical client runtime must not use document.body.innerHTML");
+    }
+    if (clientRuntimeSource.includes("location.reload(")) {
+      failures.push("canonical client runtime must not use location.reload()");
+    }
+  }
+
+  const publishReadiness = await auditSourceogPublishReadiness(workspaceRoot);
+  failures.push(
+    ...publishReadiness.findings
+      .filter((finding) => finding.severity === "error")
+      .map((finding) => finding.file ? `${finding.message} (${finding.file})` : finding.message)
+  );
+
+  return failures;
+}
+
+export async function auditSourceogPublishReadiness(workspaceRoot: string): Promise<PublishReadinessReport> {
+  const findings: PublishReadinessFinding[] = [];
+  const generatedAt = new Date().toISOString();
+  const packageRoot = path.join(workspaceRoot, "packages");
+  const sourceogPackagePath = path.join(packageRoot, "sourceog", "package.json");
+  const rootPackagePath = path.join(workspaceRoot, "package.json");
+  const allowedPublicExports = new Set([
+    ".",
+    "./actions",
+    "./auth",
+    "./automation",
+    "./cache",
+    "./client-island",
+    "./config",
+    "./doctor",
+    "./explain",
+    "./graph",
+    "./governance",
+    "./headers",
+    "./i18n",
+    "./image",
+    "./inspect",
+    "./navigation",
+    "./policies",
+    "./platform",
+    "./request",
+    "./replay",
+    "./runtime",
+    "./server",
+    "./testing",
+    "./validation",
+    "./package.json"
+  ]);
+
+  const addFinding = (
+    severity: PublishReadinessFinding["severity"],
+    category: PublishReadinessFinding["category"],
+    message: string,
+    file?: string
+  ): void => {
+    findings.push({ severity, category, message, file });
+  };
+
+  const sourceogManifest = await readJson<Record<string, unknown>>(sourceogPackagePath);
+  const sourceogExports = sourceogManifest.exports as Record<string, unknown> | undefined;
+  const sourceogDependencies = sourceogManifest.dependencies as Record<string, string> | undefined;
+  const sourceogFiles = sourceogManifest.files as string[] | undefined;
+  const sourceogBin = sourceogManifest.bin as Record<string, string> | undefined;
+  const sourceogTypes = sourceogManifest.types;
+
+  if (!sourceogBin || sourceogBin.sourceog !== "./dist/bin.js") {
+    addFinding("error", "cli", "sourceog must publish the sourceog CLI from ./dist/bin.js", "packages/sourceog/package.json");
+  }
+
+  if (sourceogTypes !== "./dist/index.d.ts") {
+    addFinding("error", "artifact", "sourceog must publish root types from ./dist/index.d.ts", "packages/sourceog/package.json");
+  }
+
+  if (!Array.isArray(sourceogFiles) || !sourceogFiles.includes("dist")) {
+    addFinding("error", "artifact", "sourceog must publish dist-only files", "packages/sourceog/package.json");
+  }
+
+  for (const [dependency, version] of Object.entries(sourceogDependencies ?? {})) {
+    if (version.startsWith("workspace:")) {
+      addFinding("error", "artifact", `sourceog must not publish workspace runtime dependency ${dependency}`, "packages/sourceog/package.json");
+    }
+  }
+
+  for (const [subpath, target] of Object.entries(sourceogExports ?? {})) {
+    if (!allowedPublicExports.has(subpath)) {
+      addFinding("error", "public-api", `sourceog exposes unexpected public subpath ${subpath}`, "packages/sourceog/package.json");
+    }
+
+    const serializedTarget = JSON.stringify(target);
+    if (serializedTarget.includes("/src/")) {
+      addFinding("error", "artifact", `sourceog export ${subpath} still references src/ instead of dist/`, "packages/sourceog/package.json");
+    }
+
+    if (subpath !== "./package.json" && typeof target === "object" && target !== null) {
+      const typedTarget = target as Record<string, unknown>;
+      if (typeof typedTarget.types !== "string" || !String(typedTarget.types).startsWith("./dist/") || !String(typedTarget.types).endsWith(".d.ts")) {
+        addFinding("error", "artifact", `sourceog export ${subpath} must publish a dist .d.ts entry`, "packages/sourceog/package.json");
+      }
+    }
+  }
+
+  for (const packageJsonPath of readdirSync(packageRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(packageRoot, entry.name, "package.json"))
+    .filter((candidate) => existsSync(candidate))) {
+    const manifest = await readJson<Record<string, unknown>>(packageJsonPath);
+    const name = String(manifest.name ?? "");
+    if (name === "sourceog") {
+      continue;
+    }
+
+    if (manifest.private !== true) {
+      addFinding("error", "package-governance", `internal package ${name} must be private`, path.relative(workspaceRoot, packageJsonPath));
+    }
+  }
+
+  const rootPackage = await readJson<Record<string, unknown>>(rootPackagePath);
+  const rootScripts = rootPackage.scripts as Record<string, string> | undefined;
+  for (const [scriptName, script] of Object.entries(rootScripts ?? {})) {
+    if (script.includes("packages/sourceog-cli/src/bin.ts")) {
+      addFinding("error", "cli", `root script ${scriptName} still targets packages/sourceog-cli/src/bin.ts`, "package.json");
+    }
+  }
+
+  const publicTextFiles = [
+    ...collectAuditFiles(path.join(workspaceRoot, "examples")),
+    ...collectAuditFiles(path.join(workspaceRoot, "docs"))
+  ];
+  for (const filePath of publicTextFiles) {
+    const source = await readFileSafe(filePath);
+    if (source === null) {
+      continue;
+    }
+
+    if (/from\s+["']@sourceog\//.test(source) || /import\s+["']@sourceog\//.test(source)) {
+      addFinding("error", "public-api", "public-facing docs/examples must not import @sourceog/* packages", path.relative(workspaceRoot, filePath));
+    }
+  }
+
+  const reportsDir = path.join(workspaceRoot, ".sourceog", "reports");
+  await fs.mkdir(reportsDir, { recursive: true });
+  const auditFindingsPath = path.join(reportsDir, "audit-findings.json");
+  const packageGovernancePath = path.join(reportsDir, "package-governance-report.json");
+  const publishReadinessPath = path.join(reportsDir, "publish-readiness-report.json");
+
+  const packageGovernance = {
+    generatedAt,
+    workspaceRoot,
+    findings: findings.filter((finding) => finding.category === "package-governance" || finding.category === "cli")
+  };
+  const publishReadiness = {
+    generatedAt,
+    workspaceRoot,
+    passed: findings.every((finding) => finding.severity !== "error"),
+    findingCount: findings.length,
+    findings
+  };
+
+  await Promise.all([
+    fs.writeFile(auditFindingsPath, JSON.stringify({ generatedAt, workspaceRoot, findings }, null, 2), "utf8"),
+    fs.writeFile(packageGovernancePath, JSON.stringify(packageGovernance, null, 2), "utf8"),
+    fs.writeFile(publishReadinessPath, JSON.stringify(publishReadiness, null, 2), "utf8")
+  ]);
+
+  return {
+    generatedAt,
+    workspaceRoot,
+    passed: publishReadiness.passed,
+    findings,
+    artifactPaths: {
+      auditFindings: auditFindingsPath,
+      packageGovernance: packageGovernancePath,
+      publishReadiness: publishReadinessPath
+    }
   };
 }
 
@@ -925,6 +1459,27 @@ function evaluateMilestoneProgress(verifiedBuild: VerifiedBuildOutput): Mileston
   };
 }
 
+function readMilestoneInvariantSource(
+  workspaceRoot: string,
+  packageSegments: string[],
+  fallbackSegments: string[],
+): string | null {
+  const workspacePath = path.join(workspaceRoot, ...packageSegments);
+  if (existsSync(workspacePath)) {
+    return readFileSync(workspacePath, "utf8");
+  }
+
+  const packagedPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    ...fallbackSegments,
+  );
+  if (existsSync(packagedPath)) {
+    return readFileSync(packagedPath, "utf8");
+  }
+
+  return null;
+}
+
 function verifyMilestone3RuntimeInternal(
   verifiedBuild: VerifiedBuildOutput,
   milestone2Complete: boolean
@@ -932,10 +1487,27 @@ function verifyMilestone3RuntimeInternal(
   const passingChecks: string[] = [];
   const failingChecks: FailingMilestoneCheck[] = [];
   const runtimeScript = getClientRuntimeScript();
-  const serverSource = readFileSync(path.resolve(process.cwd(), "packages", "sourceog-server", "src", "server.ts"), "utf8");
-  const rendererSource = readFileSync(path.resolve(process.cwd(), "packages", "sourceog-renderer", "src", "render.tsx"), "utf8");
-  const workerSource = readFileSync(path.resolve(process.cwd(), "packages", "sourceog-renderer", "src", "rsc.ts"), "utf8");
-  const islandSource = readFileSync(path.resolve(process.cwd(), "packages", "sourceog-runtime", "src", "client-island.tsx"), "utf8");
+  const workspaceRoot = findWorkspaceRoot(process.cwd());
+  const serverSource = readMilestoneInvariantSource(
+    workspaceRoot,
+    ["packages", "sourceog-server", "src", "server.ts"],
+    ["..", "_verify", "sourceog-server", "server.ts.txt"],
+  );
+  const rendererSource = readMilestoneInvariantSource(
+    workspaceRoot,
+    ["packages", "sourceog-renderer", "src", "render.ts"],
+    ["..", "_verify", "sourceog-renderer", "render.ts.txt"],
+  );
+  const workerSource = readMilestoneInvariantSource(
+    workspaceRoot,
+    ["packages", "sourceog-renderer", "src", "rsc.ts"],
+    ["..", "_verify", "sourceog-renderer", "rsc.ts.txt"],
+  );
+  const islandSource = readMilestoneInvariantSource(
+    workspaceRoot,
+    ["packages", "sourceog-runtime", "src", "client-island.tsx"],
+    ["..", "_verify", "sourceog-runtime", "client-island.tsx.txt"],
+  );
 
   const serverComponentRoutes = verifiedBuild.bundleManifest.routes.filter((entry) => entry.renderMode === "server-components");
   const routesWithClientBoundaries = serverComponentRoutes.filter((entry) => (entry.boundaryRefs?.length ?? 0) > 0);
@@ -972,7 +1544,7 @@ function verifyMilestone3RuntimeInternal(
     });
   }
 
-  if (serverSource.includes('"content-type": "text/x-component"')) {
+  if (serverSource?.includes('"content-type": "text/x-component"')) {
     passingChecks.push("M3-004");
   } else {
     failingChecks.push({
@@ -982,7 +1554,10 @@ function verifyMilestone3RuntimeInternal(
     });
   }
 
-  if (workerSource.includes("Array.from({ length: this.workerCount }") && !workerSource.includes("await this.spawnWorker();")) {
+  if (
+    workerSource?.includes("Array.from({ length: this.workerCount }") &&
+    !workerSource.includes("await this.spawnWorker();")
+  ) {
     passingChecks.push("M3-005");
   } else {
     failingChecks.push({
@@ -1002,7 +1577,7 @@ function verifyMilestone3RuntimeInternal(
     });
   }
 
-  if (!islandSource.includes("data-sourceog-client-placeholder")) {
+  if (islandSource !== null && !islandSource.includes("data-sourceog-client-placeholder")) {
     passingChecks.push("M3-009");
   } else {
     failingChecks.push({
@@ -1022,7 +1597,7 @@ function verifyMilestone3RuntimeInternal(
     });
   }
 
-  if (milestone2Complete && rendererSource.includes("renderBodyHtmlFromFlightChunks")) {
+  if (milestone2Complete && rendererSource?.includes("renderBodyHtmlFromFlightChunks")) {
     passingChecks.push("M3-011");
   } else {
     failingChecks.push({
@@ -1042,17 +1617,64 @@ function verifyMilestone3RuntimeInternal(
 }
 
 async function writeVerificationArtifacts(
+  workspaceRoot: string,
   distRoot: string,
+  verifiedBuild: VerifiedBuildOutput,
   parityScoreboard: ParityScoreboard,
-  milestoneDashboard: MilestoneDashboard
+  milestoneDashboard: MilestoneDashboard,
+  publishReadiness?: PublishReadinessReport,
 ): Promise<VerifyApplicationReport["artifactPaths"]> {
   const parityScoreboardPath = path.join(distRoot, "parity-scoreboard.json");
   const milestoneDashboardPath = path.join(distRoot, "milestone-dashboard.json");
+  const supportMatrixPath = path.join(distRoot, "support-matrix.json");
+  const releaseEvidenceIndexPath =
+    verifiedBuild.deploymentManifest.manifests.releaseEvidenceIndexManifest
+    ?? path.join(distRoot, "release-evidence-index.json");
   await fs.writeFile(parityScoreboardPath, JSON.stringify(parityScoreboard, null, 2), "utf8");
   await fs.writeFile(milestoneDashboardPath, JSON.stringify(milestoneDashboard, null, 2), "utf8");
+  await writeSupportMatrix(
+    supportMatrixPath,
+    workspaceRoot,
+    verifiedBuild.deploymentManifest.buildId,
+  );
+  const benchmarkReportPath = path.join(distRoot, "benchmark-report.json");
+  const releaseEvidenceArtifacts: ReleaseEvidenceArtifactPaths = {
+    deploymentManifest: path.join(distRoot, "deployment-manifest.json"),
+    artifactSignatureManifest: verifiedBuild.deploymentManifest.manifests.artifactSignatureManifest,
+    deploymentSignatureManifest: verifiedBuild.deploymentManifest.manifests.deploymentSignatureManifest,
+    doctorBaselineManifest: verifiedBuild.deploymentManifest.manifests.doctorBaselineManifest,
+    governanceAuditManifest: verifiedBuild.deploymentManifest.manifests.governanceAuditManifest,
+    policyReplayManifest: verifiedBuild.deploymentManifest.manifests.policyReplayManifest,
+    parityScoreboard: parityScoreboardPath,
+    milestoneDashboard: milestoneDashboardPath,
+    supportMatrix: supportMatrixPath,
+    benchmarkReport: existsSync(benchmarkReportPath) ? benchmarkReportPath : undefined,
+    publishReadiness: publishReadiness?.artifactPaths.publishReadiness,
+    auditFindings: publishReadiness?.artifactPaths.auditFindings,
+    packageGovernance: publishReadiness?.artifactPaths.packageGovernance,
+  };
+  if (existsSync(path.join(distRoot, "doctor", "doctor-report.json"))) {
+    releaseEvidenceArtifacts.doctorReport = path.join(distRoot, "doctor", "doctor-report.json");
+  }
+  if (existsSync(path.join(distRoot, "doctor", "doctor-remediation.json"))) {
+    releaseEvidenceArtifacts.doctorRemediation = path.join(distRoot, "doctor", "doctor-remediation.json");
+  }
+  if (verifiedBuild.governanceAuditManifest) {
+    await writeReleaseEvidenceIndex(releaseEvidenceIndexPath, {
+      buildId: verifiedBuild.deploymentManifest.buildId,
+      governanceAuditManifest: verifiedBuild.governanceAuditManifest,
+      artifactSignatureManifest: verifiedBuild.artifactSignatureManifest,
+      deploymentSignatureManifest: verifiedBuild.deploymentSignatureManifest,
+      doctorBaselineManifest: verifiedBuild.doctorBaselineManifest,
+      policyReplayManifest: verifiedBuild.policyReplayManifest,
+      artifactPaths: releaseEvidenceArtifacts,
+    });
+  }
   return {
     parityScoreboard: parityScoreboardPath,
-    milestoneDashboard: milestoneDashboardPath
+    milestoneDashboard: milestoneDashboardPath,
+    supportMatrix: supportMatrixPath,
+    releaseEvidenceIndex: releaseEvidenceIndexPath,
   };
 }
 
@@ -1072,15 +1694,55 @@ function findWorkspaceRoot(startCwd: string): string {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+async function resolveVerificationScriptTarget(
+  cwd: string,
+  workspaceRoot: string,
+  scriptName: "typecheck" | "test"
+): Promise<string | null> {
+  const localManifestPath = path.join(cwd, "package.json");
+  if (existsSync(localManifestPath)) {
+    const localManifest = await readJson<Record<string, unknown>>(localManifestPath);
+    const localScripts = isRecord(localManifest.scripts) ? localManifest.scripts : undefined;
+    if (typeof localScripts?.[scriptName] === "string" && localScripts[scriptName].trim().length > 0) {
+      return cwd;
+    }
+  }
+
+  if (path.resolve(cwd) !== path.resolve(workspaceRoot)) {
+    return null;
+  }
+
+  const workspaceManifestPath = path.join(workspaceRoot, "package.json");
+  if (!existsSync(workspaceManifestPath)) {
+    return null;
+  }
+
+  const workspaceManifest = await readJson<Record<string, unknown>>(workspaceManifestPath);
+  const workspaceScripts = isRecord(workspaceManifest.scripts) ? workspaceManifest.scripts : undefined;
+  if (typeof workspaceScripts?.[scriptName] === "string" && workspaceScripts[scriptName].trim().length > 0) {
+    return workspaceRoot;
+  }
+
+  return null;
+}
+
 async function runWorkspaceCommand(
   args: string[],
   cwd: string,
   stdio: "inherit" | "pipe" = "inherit"
 ): Promise<void> {
-  const command = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  const invocation = await resolveWorkspaceCommandInvocation(args, cwd);
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio, shell: false });
+    const child = spawn(invocation.command, invocation.args, {
+      cwd,
+      stdio,
+      shell: invocation.shell,
+    });
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) {
@@ -1091,12 +1753,87 @@ async function runWorkspaceCommand(
       reject(
         new SourceOGError(
           SOURCEOG_ERROR_CODES.CONFIG_INVALID,
-          `Release verification command failed: pnpm ${args.join(" ")}`,
-          { cwd, code, args }
+          `Release verification command failed: ${invocation.displayCommand}`,
+          {
+            cwd,
+            code,
+            args,
+            resolvedCommand: invocation.command,
+            resolvedArgs: invocation.args,
+            shell: invocation.shell,
+          }
         )
       );
     });
   });
+}
+
+async function resolveWorkspaceCommandInvocation(
+  args: string[],
+  workspaceRoot: string,
+): Promise<{ command: string; args: string[]; shell: boolean; displayCommand: string }> {
+  const manager = await resolveWorkspacePackageManager(workspaceRoot);
+  const npmExecPath = process.env.npm_execpath;
+
+  if (npmExecPath && /pnpm(?:\.cmd)?$/i.test(npmExecPath)) {
+    return {
+      command: npmExecPath,
+      args,
+      shell: false,
+      displayCommand: `${npmExecPath} ${args.join(" ")}`.trim(),
+    };
+  }
+
+  if (process.platform === "win32" && manager === "pnpm") {
+    return {
+      command: process.env.ComSpec ?? "cmd.exe",
+      args: ["/d", "/s", "/c", "pnpm", ...args],
+      shell: false,
+      displayCommand: `pnpm ${args.join(" ")}`.trim(),
+    };
+  }
+
+  if (manager === "npm") {
+    return {
+      command: process.platform === "win32" ? "npm.cmd" : "npm",
+      args: ["run", ...args],
+      shell: false,
+      displayCommand: `npm run ${args.join(" ")}`.trim(),
+    };
+  }
+
+  if (manager === "yarn") {
+    return {
+      command: process.platform === "win32" ? "yarn.cmd" : "yarn",
+      args: ["run", ...args],
+      shell: false,
+      displayCommand: `yarn run ${args.join(" ")}`.trim(),
+    };
+  }
+
+  return {
+    command: process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+    args,
+    shell: false,
+    displayCommand: `pnpm ${args.join(" ")}`.trim(),
+  };
+}
+
+async function resolveWorkspacePackageManager(workspaceRoot: string): Promise<"pnpm" | "npm" | "yarn"> {
+  const manifestPath = path.join(workspaceRoot, "package.json");
+  if (!existsSync(manifestPath)) {
+    return "pnpm";
+  }
+
+  const manifest = await readJson<Record<string, unknown>>(manifestPath);
+  const packageManager = typeof manifest.packageManager === "string" ? manifest.packageManager : "";
+  if (packageManager.startsWith("npm@")) {
+    return "npm";
+  }
+  if (packageManager.startsWith("yarn@")) {
+    return "yarn";
+  }
+  return "pnpm";
 }
 
 async function readJson<T>(filePath: string): Promise<T> {
@@ -1105,12 +1842,22 @@ async function readJson<T>(filePath: string): Promise<T> {
 
 function assertManifestShape(name: string, payload: unknown, buildId: string): void {
   const manifest = payload as { version?: unknown; buildId?: unknown };
+  const compatibleVersions = new Set<string>([SOURCEOG_MANIFEST_VERSION]);
 
-  if (typeof manifest.version === "string" && manifest.version !== SOURCEOG_MANIFEST_VERSION) {
+  if (
+    name === "controlPlaneManifest" ||
+    name === "consistencyGraphManifest" ||
+    name === "tunerSnapshotManifest" ||
+    name === "browserClientReferenceManifest"
+  ) {
+    compatibleVersions.add("adosf-x/1");
+  }
+
+  if (typeof manifest.version === "string" && !compatibleVersions.has(manifest.version)) {
     throw new SourceOGError(
       SOURCEOG_ERROR_CODES.MANIFEST_INVALID,
       `Manifest "${name}" has an incompatible version.`,
-      { expected: SOURCEOG_MANIFEST_VERSION, actual: manifest.version }
+      { expected: [...compatibleVersions], actual: manifest.version }
     );
   }
 
@@ -1242,6 +1989,62 @@ async function readFileSafe(filePath: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function collectFilesForGate(root: string): string[] {
+  if (!existsSync(root)) {
+    return [];
+  }
+
+  const collected: string[] = [];
+  const stack = [root];
+
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist") {
+          continue;
+        }
+        stack.push(entryPath);
+        continue;
+      }
+      if (/\.(ts|tsx|js|mjs)$/.test(entry.name)) {
+        collected.push(entryPath);
+      }
+    }
+  }
+
+  return collected;
+}
+
+function collectAuditFiles(root: string): string[] {
+  if (!existsSync(root)) {
+    return [];
+  }
+
+  const collected: string[] = [];
+  const stack = [root];
+
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist" || entry.name === ".sourceog") {
+          continue;
+        }
+        stack.push(entryPath);
+        continue;
+      }
+      if (/\.(ts|tsx|js|mjs|json|md|mdx)$/.test(entry.name)) {
+        collected.push(entryPath);
+      }
+    }
+  }
+
+  return collected;
 }
 
 /**

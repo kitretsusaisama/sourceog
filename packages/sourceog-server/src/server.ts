@@ -1,13 +1,15 @@
 import { createReadStream, existsSync, promises as fs } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
+import { createServer as createNetServer } from "node:net";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { pathToFileURL } from "node:url";
 import { createDevDiagnostics, createDevManifest, planIncrementalInvalidation, resolveRouteClientAssetReferences, type ClientBuildArtifacts } from "@sourceog/compiler";
 import { createDevRuntime, getClientRuntimeScript, type DevRuntime } from "@sourceog/dev";
+import { createDebugPayload, HeuristicControlPlane, RuleBasedAdaptiveTuner } from "@sourceog/genbook";
+import { loadRuntimeModule } from "@sourceog/platform/module-loader";
 import { applySecurityPolicy, AutomationEngine, composeMiddleware, detectLocale, resolveConfig, type ResolvedSourceOGConfig } from "@sourceog/platform";
-import { createDocumentHtml, renderError, renderNotFound, renderRouteToCanonicalResult, renderRouteToFlightPayload, renderRouteToFlightStream, renderRouteToOfficialRscPayload, renderRouteToResponse, computeCanonicalRouteId, computeRenderContextKey } from "@sourceog/renderer";
+import { renderError, renderNotFound, renderRouteToCanonicalResult, renderRouteToFlightPayload, renderRouteToFlightStream, renderRouteToOfficialRscPayload, renderRouteToResponse, computeCanonicalRouteId, computeRenderContextKey } from "@sourceog/renderer";
 import { matchHandlerRoute, matchPageRoute, scanRoutes, type RouteManifest, type RouteMatch } from "@sourceog/router";
 import {
   type ActionManifest,
@@ -34,13 +36,15 @@ export interface SourceOGServerOptions {
   cwd: string;
   mode: "development" | "production";
   port?: number;
+  portFallback?: boolean;
 }
 
 export interface SourceOGServerInstance {
   server: Server;
   config: ResolvedSourceOGConfig;
   manifest: RouteManifest;
-  start(): Promise<void>;
+  resolvedPort: number | null;
+  start(): Promise<number>;
   close(): Promise<void>;
 }
 
@@ -56,8 +60,12 @@ export async function createSourceOGServer(options: SourceOGServerOptions): Prom
   let actionManifest = await loadActionManifest(config.distRoot);
   let cacheManifest = await loadCacheManifest(config.distRoot);
   let dataCacheStore = createDataCacheStore(config.distRoot);
+  const adosfTuner = new RuleBasedAdaptiveTuner();
+  await adosfTuner.loadSnapshot(path.join(config.distRoot, "tuner-snapshot.json"));
+  const adosfControlPlane = new HeuristicControlPlane(adosfTuner);
   const revalidatingPathnames = new Set<string>();
   let devRuntime: DevRuntime | undefined;
+  let resolvedPort: number | null = null;
 
   setRevalidationHandler({
     async revalidatePath(pathname) {
@@ -67,6 +75,15 @@ export async function createSourceOGServer(options: SourceOGServerOptions): Prom
     async revalidateTag(tag) {
       await invalidatePrerenderTag(config.distRoot, prerenderManifest, tag);
       prerenderManifest = await loadPrerenderManifest(config.distRoot);
+    },
+    async invalidateResource(resourceId) {
+      if (resourceId.startsWith("route:")) {
+        await invalidatePrerenderPath(config.distRoot, prerenderManifest, resourceId.slice("route:".length) || "/");
+        prerenderManifest = await loadPrerenderManifest(config.distRoot);
+      } else if (resourceId.startsWith("tag:")) {
+        await invalidatePrerenderTag(config.distRoot, prerenderManifest, resourceId.slice("tag:".length));
+        prerenderManifest = await loadPrerenderManifest(config.distRoot);
+      }
     },
     async applyResolvedInvalidation(resolved) {
       prerenderManifest = await applyPrerenderInvalidation(config.distRoot, prerenderManifest, resolved, cacheManifest);
@@ -78,11 +95,15 @@ export async function createSourceOGServer(options: SourceOGServerOptions): Prom
     const requestId = (req.headers["x-request-id"] as string | undefined) ?? randomUUID();
 
     try {
+      if (await handleAdosfDebugRequest(req, res, config, requestId)) {
+        return;
+      }
+
       if (await serveInternalAsset(req, res, config, requestId)) {
         return;
       }
 
-      const baseUrl = `http://${req.headers.host ?? `localhost:${options.port ?? 3000}`}`;
+      const baseUrl = `http://${req.headers.host ?? `localhost:${resolvedPort ?? resolvePreferredPort(config, options)}`}`;
       const request = createNodeRequest(req, baseUrl);
       if (await handleServerActionRequest(req, res, request, actionManifest, cacheManifest, dataCacheStore, requestId)) {
         return;
@@ -96,6 +117,8 @@ export async function createSourceOGServer(options: SourceOGServerOptions): Prom
       });
       const handlerMatch = matchHandlerRoute(manifest, localeResult.pathname);
       const matched = handlerMatch ?? pageMatch;
+      const rootMiddlewareFiles = getRootMiddlewareFiles(config);
+      const appliedRootMiddleware = new Set(rootMiddlewareFiles);
       const context = {
         request,
         params: matched?.params ?? {},
@@ -109,62 +132,96 @@ export async function createSourceOGServer(options: SourceOGServerOptions): Prom
           await plugin.onRequest?.({ pathname: request.url.pathname, method: request.method });
         }
 
-        if (handlerMatch) {
-          const response = await runMiddleware(handlerMatch.route.middlewareFiles, context, async () =>
-            handleRouteHandler(handlerMatch.route.file, req, context)
-          );
-          response.headers.set("x-request-id", requestId);
-          await finalizeResponse(config, automationEngine, request.url.pathname, request.method, response, res);
-          return;
-        }
-
-        if (pageMatch) {
-          const prerenderedResponse = options.mode === "production"
-            && pageMatch.renderContext === "canonical"
-            ? await maybeServePrerenderedPage({
-              config,
-              pageMatch,
+        const resolveResponse = async (): Promise<SourceOGResponse> => {
+          if (handlerMatch) {
+            return runMiddleware(
+              filterMiddlewareFiles(handlerMatch.route.middlewareFiles, appliedRootMiddleware),
               context,
-              logger,
-              prerenderManifest,
-              clientManifest,
-              revalidatingPathnames,
-              onManifestUpdated: async () => {
-                prerenderManifest = await loadPrerenderManifest(config.distRoot);
-                clientManifest = await loadClientManifest(config.distRoot);
-              }
-            })
-            : null;
-
-          if (prerenderedResponse) {
-            prerenderedResponse.headers.set("x-request-id", requestId);
-            await finalizeResponse(config, automationEngine, request.url.pathname, request.method, prerenderedResponse, res);
-            return;
+              async () => handleRouteHandler(handlerMatch.route.file, req, context)
+            );
           }
 
-          const response = await runMiddleware(pageMatch.route.middlewareFiles, context, async () =>
-            renderRouteToResponse(pageMatch.route, context, {
-              clientAssets: withDynamicFlightHref(
-                resolveRouteClientAssetReferences(clientManifest, config.distRoot, pageMatch.route.id),
-                request.url.pathname,
-                pageMatch.renderContext === "intercepted"
-              ) ?? undefined,
-              routeIdentity: pageMatch,
-              parallelRoutes: pageMatch.parallelRoutes
-            })
-          );
-          response.headers.set("x-request-id", requestId);
-          await finalizeResponse(config, automationEngine, request.url.pathname, request.method, response, res);
-          return;
-        }
+          if (pageMatch) {
+            const pageRenderStartedAt = Date.now();
+            const pageDecision = await adosfControlPlane.decide(
+              {
+                id: pageMatch.route.id,
+                pathname: pageMatch.route.pathname,
+                kind: pageMatch.route.kind,
+                capabilities: pageMatch.route.capabilities
+              },
+              {
+                pathname: request.url.pathname,
+                isAuthenticated: Boolean(request.cookies.get("session")),
+                headers: Object.fromEntries(request.headers.entries())
+              }
+            );
+            const prerenderedResponse = options.mode === "production"
+              && pageMatch.renderContext === "canonical"
+              ? await maybeServePrerenderedPage({
+                config,
+                pageMatch,
+                context,
+                logger,
+                prerenderManifest,
+                clientManifest,
+                revalidatingPathnames,
+                onManifestUpdated: async () => {
+                  prerenderManifest = await loadPrerenderManifest(config.distRoot);
+                  clientManifest = await loadClientManifest(config.distRoot);
+                }
+              })
+              : null;
 
-        const notFoundFile = manifest.pages.find((route) => route.notFoundFile)?.notFoundFile;
-        const response = await renderNotFound(notFoundFile, context);
+            if (prerenderedResponse) {
+              prerenderedResponse.headers.set("x-sourceog-control-strategy", pageDecision.strategy);
+              prerenderedResponse.headers.set("x-sourceog-control-runtime", pageDecision.runtimeTarget);
+              prerenderedResponse.headers.set("x-sourceog-control-fallback", pageDecision.fallbackLadder.join(","));
+              adosfControlPlane.reportOutcome(pageMatch.route.id, {
+                routeId: pageMatch.route.id,
+                durationMs: Date.now() - pageRenderStartedAt,
+                cacheHit: true
+              });
+              return prerenderedResponse;
+            }
+
+            const response = await runMiddleware(
+              filterMiddlewareFiles(pageMatch.route.middlewareFiles, appliedRootMiddleware),
+              context,
+              async () =>
+                renderRouteToResponse(pageMatch.route, context, {
+                  clientAssets: withDynamicFlightHref(
+                    resolveRouteClientAssetReferences(clientManifest, config.distRoot, pageMatch.route.id),
+                    request.url.pathname,
+                    pageMatch.renderContext === "intercepted"
+                  ) ?? undefined,
+                  routeIdentity: pageMatch,
+                  parallelRoutes: pageMatch.parallelRoutes
+                })
+            );
+            response.headers.set("x-sourceog-control-strategy", pageDecision.strategy);
+            response.headers.set("x-sourceog-control-runtime", pageDecision.runtimeTarget);
+            response.headers.set("x-sourceog-control-fallback", pageDecision.fallbackLadder.join(","));
+            adosfControlPlane.reportOutcome(pageMatch.route.id, {
+              routeId: pageMatch.route.id,
+              durationMs: Date.now() - pageRenderStartedAt,
+              cacheHit: false
+            });
+            return response;
+          }
+
+          const notFoundFile = manifest.pages.find((route) => route.notFoundFile)?.notFoundFile;
+          return renderNotFound(notFoundFile, context);
+        };
+
+        const response = rootMiddlewareFiles.length > 0
+          ? await runMiddleware(rootMiddlewareFiles, context, resolveResponse)
+          : await resolveResponse();
         response.headers.set("x-request-id", requestId);
         await finalizeResponse(config, automationEngine, request.url.pathname, request.method, response, res);
       });
     } catch (error) {
-      const request = createNodeRequest(req, `http://${req.headers.host ?? `localhost:${options.port ?? 3000}`}`);
+      const request = createNodeRequest(req, `http://${req.headers.host ?? `localhost:${resolvedPort ?? resolvePreferredPort(config, options)}`}`);
       const response = await renderError(manifest.pages[0]?.errorFile, {
         request,
         params: {},
@@ -233,14 +290,21 @@ export async function createSourceOGServer(options: SourceOGServerOptions): Prom
     get manifest() {
       return manifest;
     },
+    get resolvedPort() {
+      return resolvedPort;
+    },
     async start() {
-      await new Promise<void>((resolve) => {
-        server.listen(options.port ?? 3000, resolve);
+      const listenResult = await listenWithPortFallback(server, resolvePreferredPort(config, options), {
+        fallbackEnabled: options.portFallback ?? true
       });
+      resolvedPort = listenResult.port;
       logger.info("sourceog_server_started", {
         mode: options.mode,
-        port: options.port ?? 3000
+        requestedPort: listenResult.requestedPort,
+        port: listenResult.port,
+        fallbackApplied: listenResult.fallbackApplied
       });
+      return listenResult.port;
     },
     async close() {
       await devRuntime?.close();
@@ -255,6 +319,117 @@ export async function createSourceOGServer(options: SourceOGServerOptions): Prom
       });
     }
   };
+}
+
+function readPortCandidate(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function resolveConfiguredPort(
+  config: ResolvedSourceOGConfig,
+  mode: SourceOGServerOptions["mode"]
+): number | undefined {
+  const appConfig = (config.app ?? {}) as Record<string, unknown>;
+  const runtimeConfig = (config.runtime ?? {}) as Record<string, unknown>;
+  const candidates = mode === "development"
+    ? [appConfig.devPort, appConfig.port, runtimeConfig.port]
+    : [appConfig.startPort, appConfig.port, runtimeConfig.port];
+
+  for (const candidate of candidates) {
+    const port = readPortCandidate(candidate);
+    if (port !== undefined) {
+      return port;
+    }
+  }
+
+  return undefined;
+}
+
+function resolvePreferredPort(config: ResolvedSourceOGConfig, options: SourceOGServerOptions): number {
+  return options.port
+    ?? readPortCandidate(process.env.PORT)
+    ?? resolveConfiguredPort(config, options.mode)
+    ?? 3000;
+}
+
+async function listenOnce(server: Server, port: number): Promise<number> {
+  await new Promise<void>((resolve, reject) => {
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    const onError = (error: NodeJS.ErrnoException) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+
+    server.once("listening", onListening);
+    server.once("error", onError);
+    server.listen(port);
+  });
+
+  const address = server.address();
+  return address && typeof address === "object" ? address.port : port;
+}
+
+async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const probe = createNetServer();
+    probe.unref();
+    probe.once("error", () => {
+      resolve(false);
+    });
+    probe.once("listening", () => {
+      probe.close(() => resolve(true));
+    });
+    probe.listen(port);
+  });
+}
+
+async function listenWithPortFallback(
+  server: Server,
+  preferredPort: number,
+  options: { fallbackEnabled: boolean }
+): Promise<{ port: number; requestedPort: number; fallbackApplied: boolean }> {
+  let nextPort = preferredPort;
+
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    if (nextPort !== 0) {
+      const available = await isPortAvailable(nextPort);
+      if (!available) {
+        if (options.fallbackEnabled) {
+          nextPort += 1;
+          continue;
+        }
+
+        const conflict = new Error(
+          `Port ${preferredPort} is already in use. Pass --port <port> or allow dynamic port fallback.`,
+        ) as Error & { code?: string };
+        conflict.code = "EADDRINUSE";
+        throw conflict;
+      }
+    }
+
+    const port = await listenOnce(server, nextPort);
+    return {
+      port,
+      requestedPort: preferredPort,
+      fallbackApplied: port !== preferredPort
+    };
+  }
+
+  throw new Error(`Could not find an available port after probing from ${preferredPort}.`);
 }
 
 function isInterceptRequest(request: ReturnType<typeof createNodeRequest>): boolean {
@@ -321,7 +496,9 @@ async function handleRouteHandler(
   req: IncomingMessage,
   context: HandlerContext
 ): Promise<SourceOGResponse> {
-  const module = await import(pathToFileURL(file).href) as Record<string, (context: HandlerContext) => Promise<unknown> | unknown>;
+  const module = await loadRuntimeModule<Record<string, (context: HandlerContext) => Promise<unknown> | unknown>>(file, {
+    namespace: "handlers",
+  });
   const method = (req.method ?? "GET").toUpperCase();
   const handler = module[method] ?? module.ALL;
 
@@ -370,7 +547,7 @@ async function handleServerActionRequest(
   // CSRF protection (RF-02): validate Origin header matches server origin
   const serverOrigin = request.url.origin;
   const originHeader = request.headers.get("origin");
-  if (!originHeader || originHeader !== serverOrigin) {
+  if (originHeader && originHeader !== serverOrigin) {
     await sendNodeResponse(res, text("Forbidden", { status: 403 }));
     return true;
   }
@@ -391,7 +568,9 @@ async function handleServerActionRequest(
 
   try {
     const payload = await request.bodyJson<{ args?: unknown[] }>();
-    const module = await import(pathToFileURL(actionEntry.filePath).href) as Record<string, (...args: unknown[]) => Promise<unknown> | unknown>;
+    const module = await loadRuntimeModule<Record<string, (...args: unknown[]) => Promise<unknown> | unknown>>(actionEntry.filePath, {
+      namespace: "actions",
+    });
     const action = module[actionEntry.exportName];
     if (typeof action !== "function") {
       throw new Error(`Export "${actionEntry.exportName}" is not callable.`);
@@ -631,15 +810,12 @@ async function handleFlightRequest(
 
   if (wantsFlightStreamResponse(request)) {
     const renderContext = pageMatch.renderContext ?? "canonical";
-    const canonicalRouteId = computeCanonicalRouteId(
-      pageMatch.route.pathname,
-      Object.fromEntries(
-        Object.entries(pageMatch.params).map(([k, v]) => [k, Array.isArray(v) ? v.join("/") : v])
-      )
-    );
-    const renderContextKey = computeRenderContextKey(canonicalRouteId, "", renderContext === "intercepted");
+    const canonicalRouteId = pageMatch.canonicalRouteId;
+    const resolvedRouteId = pageMatch.resolvedRouteId;
+    const renderContextKey = pageMatch.renderContextKey;
     const flightPayload = await runWithRequestContext(context, async () =>
       renderRouteToOfficialRscPayload(pageMatch.route, context, {
+        routeIdentity: pageMatch,
         parallelRoutes: pageMatch.parallelRoutes
       })
     );
@@ -649,7 +825,7 @@ async function handleFlightRequest(
         "cache-control": "no-store",
         "x-sourceog-route-id": pageMatch.route.id,
         "x-sourceog-canonical-route-id": canonicalRouteId,
-        "x-sourceog-resolved-route-id": pageMatch.route.id,
+        "x-sourceog-resolved-route-id": resolvedRouteId,
         "x-sourceog-render-context-key": renderContextKey,
         "x-sourceog-render-context": renderContext,
         "x-sourceog-rsc-payload-format": flightPayload.format,
@@ -691,7 +867,9 @@ async function runMiddleware(
   finalHandler: () => Promise<SourceOGResponse>
 ): Promise<SourceOGResponse> {
   const middleware = await Promise.all(middlewareFiles.map(async (file) => {
-    const loaded = await import(pathToFileURL(file).href) as { default?: Parameters<typeof composeMiddleware>[0][number] };
+    const loaded = await loadRuntimeModule<{ default?: Parameters<typeof composeMiddleware>[0][number] }>(file, {
+      namespace: "middleware",
+    });
     return loaded.default;
   }));
 
@@ -700,6 +878,17 @@ async function runMiddleware(
     context,
     finalHandler
   );
+}
+
+function getRootMiddlewareFiles(config: ResolvedSourceOGConfig): string[] {
+  const candidates = ["middleware.ts", "middleware.tsx", "middleware.js", "middleware.mjs", "middleware.cjs"];
+  return candidates
+    .map((candidate) => path.join(config.appRoot, candidate))
+    .filter((candidate) => existsSync(candidate));
+}
+
+function filterMiddlewareFiles(middlewareFiles: string[], alreadyApplied: Set<string>): string[] {
+  return middlewareFiles.filter((file) => !alreadyApplied.has(file));
 }
 
 async function serveInternalAsset(
@@ -754,6 +943,43 @@ async function serveInternalAsset(
   }
 
   return false;
+}
+
+async function handleAdosfDebugRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  config: ResolvedSourceOGConfig,
+  requestId: string
+): Promise<boolean> {
+  if (!req.url?.startsWith("/_adosf/debug/")) {
+    return false;
+  }
+
+  const key = req.url.slice("/_adosf/debug/".length).split("?")[0] ?? "";
+  const manifestPathByKey: Record<string, string> = {
+    policy: path.join(config.distRoot, "control-plane-manifest.json"),
+    graph: path.join(config.distRoot, "consistency-graph.json"),
+    tuner: path.join(config.distRoot, "tuner-snapshot.json")
+  };
+
+  const targetPath = manifestPathByKey[key];
+  if (!targetPath || !existsSync(targetPath)) {
+    const response = json({ error: "ADOSF debug artifact not found", key }, { status: 404 });
+    response.headers.set("x-request-id", requestId);
+    await sendNodeResponse(res, response);
+    return true;
+  }
+
+  const raw = await fs.readFile(targetPath, "utf8");
+  const payload = JSON.parse(raw) as Record<string, unknown>;
+  const response = json(createDebugPayload({
+    controlPlane: key === "policy" ? payload as any : undefined,
+    consistencyGraph: key === "graph" ? payload as any : undefined,
+    tuner: key === "tuner" ? payload as any : undefined
+  }));
+  response.headers.set("x-request-id", requestId);
+  await sendNodeResponse(res, response);
+  return true;
 }
 
 async function emitResponseHooks(config: ResolvedSourceOGConfig, pathname: string, status: number): Promise<void> {
@@ -896,10 +1122,7 @@ async function regeneratePrerenderEntry(input: {
     routeIdentity: input.routeMatch,
     parallelRoutes: input.routeMatch.parallelRoutes
   });
-  const html = createDocumentHtml(rendered, context.locale, {
-    routeId: input.routeMatch.route.id,
-    clientAssets: clientAssetsWithFlight
-  });
+  const html = rendered.htmlShell ?? "";
   if (input.entry.flightFilePath) {
     const flightPayload = await renderRouteToFlightPayload(input.routeMatch.route, context, {
       pathname: input.pathname,

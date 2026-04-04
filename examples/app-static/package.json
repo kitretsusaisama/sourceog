@@ -2,6 +2,14 @@
   "name": "@examples/app-static",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "sourceog dev .",
+    "build": "sourceog build .",
+    "start": "sourceog start .",
+    "export": "sourceog export .",
+    "verify": "sourceog verify .",
+    "audit": "sourceog audit ."
+  },
   "dependencies": {
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

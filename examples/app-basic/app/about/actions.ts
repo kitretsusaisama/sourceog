@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "sourceog";
+import { revalidatePath } from "sourceog/cache";
 
 export async function recordAboutVisit(): Promise<{ ok: true }> {
   await revalidatePath("/about");

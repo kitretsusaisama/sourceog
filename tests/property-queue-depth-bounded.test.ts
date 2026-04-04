@@ -186,22 +186,21 @@ type ChaosScenario = {
 };
 
 const EXTREME_SCENARIOS: ChaosScenario[] = [
-  // Baseline
   { name: "baseline-1w4q3o", workerCount: 1, maxQueueDepth: 4, overflow: 3, chaos: {}, concurrentLoad: 0 },
-  
-  // High pressure
-  { name: "pressure-2w12q8o", workerCount: 2, maxQueueDepth: 12, overflow: 8, chaos: {}, concurrentLoad: 20 },
-  
-  // Chaos injection
-  { name: "chaos-3w6q5o-crash0.1", workerCount: 3, maxQueueDepth: 6, overflow: 5, 
+  // FIX: delayMs [500, 1000] keeps workers busy through all tick() calls.
+  // Default [10, 50] lets workers complete between phases, freeing queue
+  // slots that absorb overflow requests → fewer rejections than expected.
+  { name: "pressure-2w12q8o", workerCount: 2, maxQueueDepth: 12, overflow: 8,
+    chaos: { delayMs: [500, 1000] }, concurrentLoad: 20 },
+
+ { name: "chaos-3w6q5o-crash0.1", workerCount: 3, maxQueueDepth: 6, overflow: 5, 
     chaos: { crashProbability: 0.1 }, concurrentLoad: 10 },
   
-  // Memory pressure
   { name: "memory-1w8q4o-leak0.2", workerCount: 1, maxQueueDepth: 8, overflow: 4, 
     chaos: { memoryLeakProbability: 0.2 }, concurrentLoad: 15 },
   
-  // Extreme concurrency
-  { name: "extreme-4w20q12o", workerCount: 4, maxQueueDepth: 20, overflow: 12, chaos: {}, concurrentLoad: 50 },
+    { name: "extreme-4w20q12o", workerCount: 4, maxQueueDepth: 20, overflow: 12,
+    chaos: { delayMs: [500, 1000] }, concurrentLoad: 50 },
 ];
 
 const makeFakeRoute = (id = "page:/chaos"): any => ({
@@ -365,41 +364,45 @@ test.skip("adversarial: p99.9 ≤ maxQueueDepth (controlled load)", async () => 
       }
     ),
     {
-      numRuns: 20,                           // Reduced runs
-      interruptAfterTimeLimit: 45_000,       // Under Vitest timeout
-      skipAllAfterTimeLimit: false,
-      maxSkipsPerRun: 100                    // Allow more skips
+      numRuns: 20
     }
   );
 }, 60_000); // 60s test timeout
 
   // INVARIANT 3: Memory pressure resilience
-  test("memory-pressure: queue bounded under 200MB leak simulation", async () => {
-    pool = new RscWorkerPool({
-      workerCount: 2, maxQueueDepth: 10,
-      queueTimeoutMs: 20_000, workerTimeoutMs: 20_000,
-      manifestPath: ""
-    });
-    await pool.initialize();
+test("memory-pressure: queue bounded under 200MB leak simulation", async () => {
+  pool = new RscWorkerPool({
+    workerCount: 2, maxQueueDepth: 10,
+    queueTimeoutMs: 20_000, workerTimeoutMs: 20_000,
+    manifestPath: ""
+  });
+  await pool.initialize();
 
-    const route = makeFakeRoute("memory");
-    const ctx = makeFakeContext("memory");
+  const route = makeFakeRoute("memory");
+  const ctx = makeFakeContext("memory");
 
-    // Simulate 200MB leak across workers
-    const leakPromises = Array.from({ length: 20 }, () => 
-      pool!.render(route, ctx).catch(() => null)
-    );
+  const leakPromises = Array.from({ length: 20 }, () =>
+    pool!.render(route, ctx).catch(() => null)
+  );
 
-    await tick(10);
-    const metrics = await collectMetrics(pool!, 1000, 10);
+  await tick(10);
+  const metrics = await collectMetrics(pool!, 1000, 10);
 
-    // Leak doesn't break queue invariant
-    expect(metrics.violations).toBe(0);
-    expect(metrics.samples.length).toBeGreaterThan(50);
+  // Core invariant: queue never exceeded the limit
+  expect(metrics.violations).toBe(0);
 
-    await pool!.shutdown();
-    await Promise.allSettled(leakPromises);
-  }, 30_000);
+  // Sampler ran throughout the window — first and last samples
+  // span at least 80% of the 1000ms collection period.
+  // This is robust to event loop starvation (which inflates interval
+  // from 10ms to ~35ms on Windows under memory pressure) without
+  // producing a flaky sample-count assertion.
+  expect(metrics.samples.length).toBeGreaterThan(0);
+  const spanMs = metrics.samples.at(-1)!.timestamp - metrics.samples[0]!.timestamp;
+  expect(spanMs).toBeGreaterThan(800);
+
+  await pool!.shutdown();
+  await Promise.allSettled(leakPromises);
+}, 30_000);
 });
 
 // Production utilities

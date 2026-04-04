@@ -1,0 +1,18 @@
+{
+  "name": "@sourceog/renderer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sourceog/genbook": "workspace:*",
+    "@sourceog/platform": "workspace:*",
+    "@sourceog/router": "workspace:*",
+    "@sourceog/runtime": "workspace:*"
+  }
+}

@@ -231,6 +231,7 @@ async function mockBundle(
 
 export {
   buildApplication,
+  exportApplication,
   type BuildResult as ApplicationBuildResult,
 } from "./build.js";
 
@@ -239,6 +240,10 @@ export {
 // ---------------------------------------------------------------------------
 
 export { writeClientArtifacts } from "./client.js";
+export {
+  resolveRouteClientAssetReferences,
+  type ClientBuildArtifacts,
+} from "./client.js";
 
 // ---------------------------------------------------------------------------
 // Utility re-exports
@@ -305,6 +310,59 @@ export {
 export {
   verifyApplication,
   verifyBuildOutput,
+  verifyAdosfReleaseGates,
+  auditSourceogPublishReadiness,
   type VerifyApplicationOptions,
   type VerifyApplicationReport,
+  type PublishReadinessFinding,
+  type PublishReadinessReport,
 } from "./verify.js";
+export {
+  generateSupportMatrix,
+  writeSupportMatrix,
+} from "./support-matrix.js";
+export {
+  releaseApplication,
+  type ReleaseApplicationOptions,
+  type ReleaseApplicationReport,
+  type ReleaseEvidenceDiffReport,
+} from "./release.js";
+export {
+  runDoctor,
+  scanProject,
+  scanArtifacts,
+  scanCompatibility,
+  scanRouteRisks,
+  scanWorkerHealth,
+  scanSecurityLeaks,
+  scanPerformanceBudgets,
+  scanDocsCoverage,
+  generateRemediationPlan,
+  exportReport,
+  type DoctorArea,
+  type DoctorFinding,
+  type DoctorRemediationStep,
+  type DoctorReport,
+  type DoctorOptions,
+} from "./doctor.js";
+export {
+  inspectBuildArtifacts,
+  inspectGovernance,
+  inspectRoute,
+  inspectGraph,
+  inspectCache,
+  inspectAction,
+  diffBuildArtifacts,
+  explainRoute,
+  explainDecision,
+  type ArtifactInspectionSummary,
+  type GovernanceInspectionReport,
+  type RouteInspectionReport,
+  type GraphInspectionReport,
+  type CacheInspectionReport,
+  type ActionInspectionReport,
+  type DecisionExplanationReport,
+  type DoctorInspectionSummary,
+  type PolicyDiagnostics,
+  type ArtifactDiffReport,
+} from "./inspect.js";
