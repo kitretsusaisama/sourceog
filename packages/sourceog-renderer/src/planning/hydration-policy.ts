@@ -25,13 +25,11 @@ export function resolveHydrationPolicy(
   // -------------------------------------------------------------------------
   // Assume route exports might define a hydration preference, e.g.:
   //   export const config = { hydration: 'idle' };
-  const routeConfig = (route as any).config as
-    | { hydration?: HydrationMode }
-    | undefined;
+  const routeConfig = (route as { config?: { hydration?: HydrationMode } }).config;
 
   if (routeConfig?.hydration) {
     return {
-      mode: routeConfig.hydration as HydrationMode,
+      mode: routeConfig.hydration,
     };
   }
 

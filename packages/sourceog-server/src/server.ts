@@ -973,9 +973,9 @@ async function handleAdosfDebugRequest(
   const raw = await fs.readFile(targetPath, "utf8");
   const payload = JSON.parse(raw) as Record<string, unknown>;
   const response = json(createDebugPayload({
-    controlPlane: key === "policy" ? payload as any : undefined,
-    consistencyGraph: key === "graph" ? payload as any : undefined,
-    tuner: key === "tuner" ? payload as any : undefined
+    controlPlane: key === "policy" ? (payload as unknown) : undefined,
+    consistencyGraph: key === "graph" ? (payload as unknown) : undefined,
+    tuner: key === "tuner" ? (payload as unknown) : undefined
   }));
   response.headers.set("x-request-id", requestId);
   await sendNodeResponse(res, response);

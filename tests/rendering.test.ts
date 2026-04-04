@@ -152,7 +152,7 @@ describe("renderer", () => {
     expect(result.clientReferenceRefs).toHaveLength(0);
     expect(result.boundaryRefs).toHaveLength(1);
     expect(
-      result.serverTree.children.some((child: any) => child.kind === "layout")
+      result.serverTree.children.some((child: { kind: string }) => child.kind === "layout")
     ).toBe(true);
   }, 30_000);
 

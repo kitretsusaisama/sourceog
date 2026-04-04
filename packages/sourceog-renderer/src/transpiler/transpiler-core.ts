@@ -246,7 +246,7 @@ class TranspilerManager {
     // Try Esbuild
     try {
       const esbuild = await loadEsbuildModule();
-      this.esbuildTransform = async (code, filename) => {
+      this.esbuildTransform = async (code: string, filename: string): Promise<string> => {
         const result = await esbuild.transform(code, {
           loader: filename.endsWith('.tsx') ? 'tsx' : filename.endsWith('.jsx') ? 'jsx' : 'ts',
           jsx: 'automatic',
@@ -262,8 +262,8 @@ class TranspilerManager {
     // Try Sucrase
     try {
       // @ts-ignore - sucrase is an optional dependency
-      const sucrase = await import('sucrase') as any;
-      this.sucraseTransform = async (code, filename) => {
+      const sucrase: typeof import('sucrase') = await import('sucrase');
+      this.sucraseTransform = async (code: string, filename: string): Promise<string> => {
         return sucrase.transform(code, {
           transforms: ['typescript', 'jsx'],
           jsxRuntime: 'automatic',

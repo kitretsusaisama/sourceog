@@ -95,6 +95,6 @@ export class CoreError extends CoreBaseError {
     metadata?: Record<string, unknown>
   ) {
     super(message, { metadata });
-    (this as any).code = codeOverride;
+    this.code = codeOverride;
   }
 }

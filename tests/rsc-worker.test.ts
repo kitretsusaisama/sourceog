@@ -33,12 +33,12 @@ describe.concurrent('RSC Worker Unit Tests', () => {
 
     it('handles malformed manifest gracefully', () => {
       const malformed = { invalid: null };
-      const result = normalizeClientManifest(malformed as any);
+      const result = normalizeClientManifest(malformed as unknown);
       expect(result).toEqual({});
     });
 
     it('falls back to empty manifest', () => {
-      expect(normalizeClientManifest({} as any)).toEqual({});
+      expect(normalizeClientManifest({} as unknown)).toEqual({});
     });
 
     it('normalizes manifest without registry wrapper', () => {

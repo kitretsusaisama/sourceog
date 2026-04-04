@@ -51,7 +51,6 @@ export function buildSegmentGraph(route: RouteDefinition): SegmentNode {
     cursor.children.push(layoutNode);
     cursor = layoutNode;
   }
-
   // 2. Add Template Segment (if exists)
   if (route.templateFile) {
     const templateNode: SegmentNode = {
@@ -76,9 +75,8 @@ export function buildSegmentGraph(route: RouteDefinition): SegmentNode {
   cursor.children.push(pageNode);
 
   // 4. Add Parallel Route Slots (optional extension point)
-  const routeAny = route as any;
-  if (routeAny.parallelRoutes) {
-    for (const [slot, slotRoute] of Object.entries(routeAny.parallelRoutes as Record<string, { file: string }>)) {
+  if (route.parallelRoutes) {
+    for (const [slot, slotRoute] of Object.entries(route.parallelRoutes as Record<string, { file: string }>)) {
       const parallelNode: SegmentNode = {
         id: `parallel:${slot}:${slotRoute.file}`,
         type: 'parallel',

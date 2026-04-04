@@ -16,7 +16,7 @@ export type DeepPartial<T> = {
 /**
  * Prevents TypeScript from inferring the type from a value.
  */
-export type NoInfer<T> = [T][T extends any ? 0 : never];
+export type NoInfer<T> = [T][T extends unknown ? 0 : never];
 
 /**
  * Marks specific keys of an object as optional, leaving others required.
