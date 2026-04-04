@@ -83,10 +83,13 @@ export async function renderFlightStream(
 
     // PHASE 2: React Element Construction
     // Supports legacy component shape (stateless functional / class components)
-    const element = React.createElement(components.component as React.ComponentType<any>, {
-      params: context.params ?? {},
-      searchParams: Object.fromEntries(context.query ?? []),
-    } as any);
+    const element = React.createElement(
+      components.component as React.ComponentType<{ params: Record<string, string>; searchParams: Record<string, string> }>,
+      {
+        params: context.params ?? {},
+        searchParams: Object.fromEntries(context.query ?? []),
+      }
+    );
 
     // PHASE 3: RSC Flight Serialization
     const renderOptions: RenderFlightOptions = {
@@ -125,7 +128,7 @@ export async function renderFlightStream(
       error: {
         name: error.name,
         message: error.message,
-        code: (error as any).code,
+        code: (error as Error & { code?: unknown }).code,
         stack: error.stack,
       },
     });

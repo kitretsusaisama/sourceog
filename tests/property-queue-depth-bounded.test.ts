@@ -73,15 +73,21 @@ class ChaosWorker extends EventEmitter {
     setImmediate(() => {
       this.emit("message", {
         type: "render_result",
-        requestId: (message as any)?.requestId || "unknown",
+        requestId:
+          typeof message === "object" &&
+          message !== null &&
+          "requestId" in message &&
+          typeof (message as { requestId: unknown }).requestId === "string"
+            ? (message as { requestId: string }).requestId
+            : "unknown",
         route: "test",
         pathname: "/test",
         renderContextKey: "test",
         result: {
           format: "react-flight-text",
-          chunks: [],
-          usedClientRefs: []
-        }
+          chunks: [] as unknown[],
+          usedClientRefs: [] as unknown[],
+        },
       });
     });
   }
@@ -203,20 +209,48 @@ const EXTREME_SCENARIOS: ChaosScenario[] = [
     chaos: { delayMs: [500, 1000] }, concurrentLoad: 50 },
 ];
 
-const makeFakeRoute = (id = "page:/chaos"): any => ({
+const makeFakeRoute = (id = "page:/chaos"): {
+  id: string;
+  pathname: string;
+  file: string;
+  layouts: unknown[];
+  middlewareFiles: unknown[];
+  segments: unknown[];
+  capabilities: unknown[];
+  kind: string;
+} => ({
   id, pathname: `/${id}`, file: process.cwd() + "/fake/chaos.tsx",
   layouts: [], middlewareFiles: [], segments: [], capabilities: [], kind: "page"
 });
 
-const makeFakeContext = (id: string = "chaos"): any => ({
+type FakeContext = {
+  request: {
+    url: URL;
+    method: string;
+    headers: Headers;
+    cookies: Map<string, string>;
+    requestId: string;
+    runtime: "node";
+    bodyText: () => Promise<string>;
+    bodyJson: <T>() => Promise<T>;
+  };
+  params: Record<string, string>;
+  query: URLSearchParams;
+};
+
+const makeFakeContext = (id: string = "chaos"): FakeContext => ({
   request: {
     url: new URL(`http://localhost/${id}`),
-    method: "GET", headers: new Headers(), cookies: new Map(),
-    requestId: `chaos-${id}-${Date.now()}`, runtime: "node" as const,
+    method: "GET",
+    headers: new Headers(),
+    cookies: new Map<string, string>(),
+    requestId: `chaos-${id}-${Date.now()}`,
+    runtime: "node",
     async bodyText() { return ""; },
-    async bodyJson<T>() { return {} as T; }
+    async bodyJson<T>() { return {} as T; },
   },
-  params: {}, query: new URLSearchParams()
+  params: {} as Record<string, string>,
+  query: new URLSearchParams(),
 });
 
 // ---------------------------------------------------------------------------

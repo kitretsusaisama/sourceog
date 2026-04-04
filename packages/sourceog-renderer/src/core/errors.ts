@@ -98,6 +98,6 @@ export function isSourceOGError(error: unknown): error is SourceOGBaseError {
     error instanceof SourceOGBaseError ||
     (typeof error === 'object' &&
       error !== null &&
-      (error as any).isSourceOGError === true)
+      (error as { isSourceOGError?: boolean }).isSourceOGError === true)
   );
 }

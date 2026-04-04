@@ -4,6 +4,17 @@
 import type { SourceOGRuntimeName, EnvironmentMode } from '../types/runtime.js';
 
 // ---------------------------------------------------------------------------
+// GlobalThis Extensions
+// ---------------------------------------------------------------------------
+
+declare global {
+  interface GlobalThis {
+    Bun?: { version?: string };
+    Deno?: { version?: { deno?: string } };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Runtime Detection (Constants)
 // ---------------------------------------------------------------------------
 
@@ -11,13 +22,13 @@ import type { SourceOGRuntimeName, EnvironmentMode } from '../types/runtime.js';
  * Detects if running inside Bun.
  * Bun has specific globals and behaves differently regarding transpilation.
  */
-export const isBun: boolean = typeof (globalThis as any).Bun !== 'undefined';
+export const isBun: boolean = typeof globalThis.Bun !== 'undefined';
 
 /**
  * Detects if running inside Deno.
  * Deno has native TypeScript support and Web Standard APIs.
  */
-export const isDeno: boolean = typeof (globalThis as any).Deno !== 'undefined';
+export const isDeno: boolean = typeof globalThis.Deno !== 'undefined';
 
 /**
  * Detects if running inside Node.js.
@@ -38,8 +49,8 @@ export const isEdge: boolean = !isBun && !isDeno && !isNode;
 // ---------------------------------------------------------------------------
 
 function getVersion(): string {
-  if (isBun) return (globalThis as any).Bun.version ?? 'unknown';
-  if (isDeno) return (globalThis as any).Deno.version?.deno ?? 'unknown';
+  if (isBun) return globalThis.Bun.version ?? 'unknown';
+  if (isDeno) return globalThis.Deno.version?.deno ?? 'unknown';
   if (isNode) return process.versions.node;
   return 'unknown';
 }
@@ -83,7 +94,7 @@ function getMode(): EnvironmentMode {
   
   // Deno specific check
   if (isDeno) {
-    const denoEnv = (globalThis as any).Deno.env;
+    const denoEnv = (globalThis as unknown as { Deno: { env: { get(key: string): string | undefined } } }).Deno.env;
     const nodeEnv = denoEnv.get('NODE_ENV');
     if (nodeEnv === 'test' || denoEnv.get('DENO_TEST')) return 'test';
     if (nodeEnv === 'production') return 'production';

@@ -214,10 +214,13 @@ async function executeRender(
   try {
     const components = await resolveRouteComponents(route);
 
-    const element = React.createElement(components.component as React.ComponentType<any>, {
-      params: context.params ?? {},
-      searchParams: Object.fromEntries(context.query ?? []),
-    });
+    const element = React.createElement(
+      components.component as React.ComponentType<{ params: Record<string, string>; searchParams: Record<string, string>; }>,
+      {
+        params: context.params ?? {},
+        searchParams: Object.fromEntries(context.query ?? []),
+      }
+    );
 
     const chunks = await renderFlight(element, clientManifest, {
       routeId: route.id,
@@ -244,6 +247,6 @@ function isWorkerMessage(msg: unknown): msg is { type: string; requestId?: strin
     msg !== null &&
     typeof msg === 'object' &&
     'type' in msg &&
-    typeof (msg as any).type === 'string'
+    typeof (msg as { type: unknown }).type === 'string'
   );
 }

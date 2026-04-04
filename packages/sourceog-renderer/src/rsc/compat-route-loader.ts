@@ -33,7 +33,8 @@ export async function resolveRouteComponents(
   const pageModule = await loadRouteModule(route.file);
   
   // Convention: Prefer `default`, fallback to `Page` named export
-  const pageComponent = pageModule.default ?? (pageModule as any).Page;
+  const pageComponent =
+    pageModule.default ?? (pageModule as unknown as { Page?: unknown }).Page;
   
   if (typeof pageComponent !== 'function') {
     throw new RenderError(

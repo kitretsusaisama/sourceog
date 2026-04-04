@@ -152,5 +152,8 @@ export function resolveManifestPathForRouteFile(
  * Useful for hot-reloading or testing.
  */
 export function clearManifestCache(): void {
-  (manifestPathCache as any).clear();
+  const cache = manifestPathCache as unknown;
+  if (cache && typeof (cache as { clear: unknown }).clear === 'function') {
+    (cache as { clear(): void }).clear();
+  }
 }

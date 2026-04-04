@@ -61,7 +61,7 @@ export interface RenderRouteResult extends CanonicalRenderResult {
 }
 
 interface RouteModuleLike {
-  default?: React.ComponentType<any>;
+  default?: React.ComponentType<unknown>;
   metadata?: Metadata;
   generateMetadata?: (context: SourceOGRequestContext) => Promise<Metadata> | Metadata;
 }
@@ -607,7 +607,6 @@ export async function renderError(
     { status: 500 },
   );
 }
-
 export async function renderNotFound(
   _notFoundFile: string | undefined,
   context: SourceOGRequestContext,
@@ -631,7 +630,7 @@ export async function streamServerComponentsResponseForTest(
 export const renderRoute = renderRouteToResponse;
 
 export function toNodeReadable(stream: ReadableStream<Uint8Array>): Readable {
-  return Readable.fromWeb(stream as any);
+  return Readable.fromWeb(stream);
 }
 
 export function createRenderFailure(message: string, details?: Record<string, unknown>): SourceOGError {

@@ -180,7 +180,37 @@ async function runExport(cwd: string, outDir?: string): Promise<void> {
   await exportApplication(cwd, outDir);
 }
 
-function formatInspectText(subject: string, payload: any): string {
+interface InspectManifestPayload {
+  buildId: string;
+  distRoot: string;
+  stability: string;
+  routeCount: number;
+  pageRouteCount: number;
+  handlerRouteCount: number;
+  prerenderedRouteCount: number;
+  runtimeTargets?: string[];
+  manifestNames?: string[];
+  signatureSummary?: {
+    compiler: string;
+    runtime: string;
+    deployment: string;
+  };
+  doctor?: {
+    passed: boolean;
+    summary: {
+      errors: number;
+      warnings: number;
+      infos: number;
+    };
+  };
+  policyMesh?: {
+    objective: string;
+    loopNames?: string[];
+    reducerPhases?: string[];
+  };
+}
+
+function formatInspectText(subject: string, payload: InspectManifestPayload): string {
   if (subject === "manifest" || subject === "manifests") {
     const lines = [
       `Build ${payload.buildId} in ${payload.distRoot}`,
@@ -265,7 +295,26 @@ function formatInspectText(subject: string, payload: any): string {
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
-function formatDiffText(payload: any): string {
+type DiffPayload = {
+  current: { buildId: string };
+  baseline: { buildId: string };
+  manifests: { added: string[]; removed: string[]; changed: string[] };
+  routes: {
+    added: { pathname: string; changes: string[] }[];
+    removed: { pathname: string; changes: string[] }[];
+    changed: { pathname: string; changes: string[] }[];
+  };
+  policyMesh: {
+    objectiveChanged: boolean;
+    reducerPhasesChanged: boolean;
+    changedRoutes: number;
+  };
+  doctor?: {
+    regressions?: string[];
+  };
+};
+
+function formatDiffText(payload: DiffPayload): string {
   const lines = [
     `Compared ${payload.current.buildId} against ${payload.baseline.buildId}`,
     `Manifest changes: +${payload.manifests.added.length} / -${payload.manifests.removed.length} / ~${payload.manifests.changed.length}`,
@@ -284,7 +333,21 @@ function formatDiffText(payload: any): string {
   return `${lines.join("\n")}\n`;
 }
 
-function formatExplainText(payload: any): string {
+function formatExplainText(payload: {
+  summary: string;
+  reducerPhases?: string[];
+  loopNames?: string[];
+  reasons?: string[];
+  policyDiagnostics?: {
+    objective?: string;
+    changedDecisionFields?: string[];
+    decisionTraceCount?: number;
+  };
+  doctor?: {
+    summary: { passed: boolean };
+    findings?: unknown[];
+  };
+}): string {
   const lines = [
     payload.summary,
     `Reducer phases: ${(payload.reducerPhases ?? []).join(" -> ")}`,

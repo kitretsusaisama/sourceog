@@ -42,7 +42,7 @@ export function resolveCachePolicy(
   //   export const revalidate = 60;
   //
   // We conservatively check for a numeric `revalidate` field on the route.
-  const revalidate = (route as any).revalidate as number | undefined;
+  const revalidate = (route as { revalidate?: number }).revalidate;
 
   if (typeof revalidate === 'number') {
     return {

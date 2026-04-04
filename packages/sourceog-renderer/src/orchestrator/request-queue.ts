@@ -9,7 +9,7 @@ import type { WorkerRenderRequest } from '../types/messages.js';
 export interface QueuedRenderRequest {
   requestId: string;
   payload: WorkerRenderRequest['payload'];
-  resolve: (result: any) => void;
+  resolve: (result: unknown) => void;
   reject: (error: Error) => void;
   queueTimeout: NodeJS.Timeout;
   renderTimeoutMs: number;

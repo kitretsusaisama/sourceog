@@ -68,7 +68,6 @@ function normalizeSpecifier(value: string): string {
 function resolveRelativeModulePath(parentFile: string, moduleId: string): string {
   const normalizedParent = parentFile.replaceAll("\\", "/");
   const normalizedModule = moduleId.replaceAll("\\", "/");
-
   if (!normalizedModule.startsWith(".")) {
     return normalizedModule;
   }
@@ -93,7 +92,7 @@ function resolveRelativeModulePath(parentFile: string, moduleId: string): string
 function resolveClientReferenceEntry(
   moduleId: string,
   exportName: string,
-  component?: React.ComponentType<any>
+  component?: React.ComponentType<unknown>
 ): ClientReferenceManifestRegistryEntry | null {
   const runtimeGlobals = globalThis as typeof globalThis & {
     __SOURCEOG_CLIENT_REFERENCE_MANIFEST__?: Record<string, ClientReferenceManifestRegistryEntry>;
@@ -181,12 +180,12 @@ export function createClientIslandRef(
  */
 export function createClientReferenceProxy(
   entry: ClientReferenceManifestRegistryEntry
-): React.ComponentType<any> {
+): React.ComponentType<unknown> {
   return createClientIslandRef(
     entry.id,
     entry.name,
     entry.chunks
-  ) as unknown as React.ComponentType<any>;
+  ) as React.ComponentType<unknown>;
 }
 
 /**

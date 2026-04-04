@@ -34,7 +34,8 @@ export class StaticAnalyzer {
 
     // 1. Check for dynamic function exports / config hints
     // e.g. export const dynamic = 'force-dynamic'
-    if (typeof (moduleExports as any).dynamic === 'string') {
+    const dynamicValue = moduleExports['dynamic'];
+    if (typeof dynamicValue === 'string') {
       result.isPure = false;
     }
 
@@ -55,7 +56,8 @@ export class StaticAnalyzer {
       if (
         typeof exportValue === 'object' &&
         exportValue !== null &&
-        (exportValue as any).__client_boundary__ === true
+        '__client_boundary__' in (exportValue as Record<string, unknown>) &&
+        (exportValue as Record<string, unknown>)['__client_boundary__'] === true
       ) {
         result.clientBoundaries.push(key);
       }

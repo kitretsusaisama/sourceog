@@ -35,7 +35,7 @@ export function resolveRenderPolicy(
   // - undefined: full SSG
   // - 0: fully dynamic
   // - >0: ISR
-  const revalidate = (route as any).revalidate as number | undefined;
+  const revalidate = (route as { revalidate?: number }).revalidate;
 
   if (typeof revalidate === 'number') {
     if (revalidate > 0) {
