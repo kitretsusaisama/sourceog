@@ -104,7 +104,7 @@ export class HeuristicControlPlane implements ControlPlane {
       entries: routes.map((route) => ({
         routeId: route.id,
         pathname: route.pathname,
-        decision: decisions.get(route.id)!,
+        decision: decisions.get(route.id),
       })),
     };
   }

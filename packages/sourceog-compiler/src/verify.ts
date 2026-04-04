@@ -1045,7 +1045,7 @@ function createParityScoreboard(
         `${verifiedBuild.prerenderManifest.prerendered.length} prerendered routes`,
         `${flightAssetCount} Flight assets emitted`
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "rendering")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "rendering")?.blockers ?? []
     },
     {
       id: "routing",
@@ -1060,7 +1060,7 @@ function createParityScoreboard(
         `${parallelCount} parallel nodes`,
         `${interceptCount} intercepting nodes`
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "routing")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "routing")?.blockers ?? []
     },
     {
       id: "server-client-boundary",
@@ -1077,7 +1077,7 @@ function createParityScoreboard(
         `${verifiedBuild.rscReferenceManifest.entries.length} RSC reference entries`,
         `${clientBoundaryRouteCount} routes with client boundaries`
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "boundary")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "boundary")?.blockers ?? []
     },
     {
       id: "server-actions",
@@ -1090,7 +1090,7 @@ function createParityScoreboard(
         `${verifiedBuild.actionManifest.entries.length} action entries`,
         `${verifiedBuild.actionManifest.entries.filter((entry) => entry.refreshPolicy !== "none").length} actions with refresh policies`
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "actions")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "actions")?.blockers ?? []
     },
     {
       id: "cache",
@@ -1106,7 +1106,7 @@ function createParityScoreboard(
         `${verifiedBuild.cacheManifest.entries.filter((entry) => entry.kind === "data").length} data cache entries`,
         `${verifiedBuild.cacheManifest.invalidationLinks.length} cache invalidation links`
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "cache")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "cache")?.blockers ?? []
     },
     {
       id: "compiler",
@@ -1120,7 +1120,7 @@ function createParityScoreboard(
         `${verifiedBuild.assetManifest.assets.length} tracked assets`,
         `${buildResult.budgetReport.violations.length} budget violations`
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "compiler")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "compiler")?.blockers ?? []
     },
     {
       id: "dev-runtime",
@@ -1133,7 +1133,7 @@ function createParityScoreboard(
         `${diagnosticsCount} diagnostics manifest issues`,
         "Flight-driven route refresh available"
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "dev-runtime")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "dev-runtime")?.blockers ?? []
     },
     {
       id: "platform",
@@ -1146,7 +1146,7 @@ function createParityScoreboard(
         `${verifiedBuild.adapterManifest.supportedFeatures.length} supported adapter features`,
         `${verifiedBuild.deploymentManifest.routes.filter((route) => route.kind === "page").length} page routes exercising platform surface`
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "platform")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "platform")?.blockers ?? []
     },
     {
       id: "deployment",
@@ -1159,7 +1159,7 @@ function createParityScoreboard(
         `${verifiedBuild.adapterManifest.supportedAdapters.length} supported first-party adapters`,
         `${verifiedBuild.deploymentManifest.routes.filter((route) => route.edgeCompatible).length} edge-compatible routes`
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "deployment")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "deployment")?.blockers ?? []
     },
     {
       id: "migration-dx",
@@ -1173,7 +1173,7 @@ function createParityScoreboard(
         options.ranTypecheck ? "workspace typecheck executed" : "workspace typecheck skipped",
         options.ranTests ? "workspace tests executed" : "workspace tests skipped"
       ],
-      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "migration-dx")!.blockers
+      blockers: PARITY_BLOCKERS.find((entry) => entry.category === "migration-dx")?.blockers ?? []
     }
   ];
 
@@ -1199,6 +1199,7 @@ function createParityScoreboard(
       ranTests: options.ranTests
     }
   };
+}
 }
 
 function createMilestoneDashboard(
@@ -2000,7 +2001,11 @@ function collectFilesForGate(root: string): string[] {
   const stack = [root];
 
   while (stack.length > 0) {
-    const current = stack.pop()!;
+    const maybeCurrent = stack.pop();
+    if (!maybeCurrent) {
+      continue;
+    }
+    const current = maybeCurrent;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const entryPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
@@ -2028,7 +2033,11 @@ function collectAuditFiles(root: string): string[] {
   const stack = [root];
 
   while (stack.length > 0) {
-    const current = stack.pop()!;
+    const popped = stack.pop();
+    if (!popped) {
+      break;
+    }
+    const current = popped;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const entryPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
@@ -2064,8 +2073,8 @@ function compareManifests(
       discrepancies.push(`Key "${key}" present in server manifest but missing from browser manifest.`);
       continue;
     }
-    const s = serverManifest[key]!;
-    const b = browserManifest[key]!;
+    const s = serverManifest[key];
+    const b = browserManifest[key];
     if (s.id !== b.id) {
       discrepancies.push(`Key "${key}": id mismatch (server="${s.id}", browser="${b.id}").`);
     }
@@ -2130,7 +2139,6 @@ async function runM3002(routes: RouteInfo[], hmrFilePath?: string): Promise<{ pa
   }
   return { pass: true, details: "" };
 }
-
 async function runM3003(hmrFilePath?: string): Promise<{ pass: boolean; details: string }> {
   // M3-003: replaceRouteBody does not appear outside hardFallbackHtmlReplace catch branch (INV-005)
   if (!hmrFilePath) {
@@ -2155,7 +2163,7 @@ async function runM3003(hmrFilePath?: string): Promise<{ pass: boolean; details:
   const lines = source.split("\n");
   const replaceRouteBodyLines: number[] = [];
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i]!.includes("replaceRouteBody")) {
+    if (lines[i]?.includes("replaceRouteBody")) {
       replaceRouteBodyLines.push(i + 1); // 1-indexed
     }
   }
@@ -2233,7 +2241,7 @@ async function runM3004(routes: RouteInfo[]): Promise<{ pass: boolean; details: 
   const failures: string[] = [];
   for (const route of routesWithEndpoints) {
     try {
-      const headers = await probeFlightEndpoint(route.flightEndpoint!);
+      const headers = await probeFlightEndpoint(route.flightEndpoint);
       if (headers === null) {
         failures.push(`${route.routeId}: could not connect to ${route.flightEndpoint}`);
         continue;

@@ -84,7 +84,7 @@ export function applyI18nExpansion(tree: RouteTree, i18n: I18nConfig): void {
 
     for (const locale of i18n.locales) {
       const localeNode = cloneWithLocale(node, locale, i18n);
-      tree.localeVariants.get(locale)!.push(localeNode);
+      tree.localeVariants.get(locale)?.push(localeNode);
     }
   }
 }

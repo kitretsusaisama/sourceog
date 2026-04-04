@@ -198,7 +198,10 @@ describe("ISRCoordinator - unit tests", () => {
     const coordinator = new ISRCoordinator();
     const lock = await coordinator.acquireLock("my-route");
     expect(coordinator.getLockMap().has("my-route")).toBe(true);
-    await coordinator.releaseLock(lock!);
+    if (!lock) {
+      throw new Error("Failed to acquire lock");
+    }
+    await coordinator.releaseLock(lock);
     expect(coordinator.getLockMap().has("my-route")).toBe(false);
   });
 

@@ -231,7 +231,7 @@ describe("rateLimit factory", () => {
     // Second request — blocked
     const response = await middleware(req);
     expect(response).not.toBeNull();
-    expect(response!.status).toBe(429);
+    expect(response?.status).toBe(429);
   });
 
   it("sets retry-after header on 429 response", async () => {
@@ -239,7 +239,7 @@ describe("rateLimit factory", () => {
     const req = makeRequest("4.4.4.4");
     await middleware(req);
     const response = await middleware(req);
-    expect(response!.headers.get("retry-after")).toBeTruthy();
+    expect(response?.headers.get("retry-after")).toBeTruthy();
   });
 });
 

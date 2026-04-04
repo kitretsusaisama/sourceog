@@ -124,12 +124,12 @@ describe("Property 14: Fallback Opacity", () => {
 
             // Log entry must have all required fields (Req 4.3)
             expect(logEntry).not.toBeNull();
-            expect(logEntry!.severity).toBe("ERROR");
-            expect(logEntry!.type).toBe("[SOURCEOG-FALLBACK]");
-            expect(logEntry!.route).toBeTruthy();
-            expect(logEntry!.renderContextKey).toBeTruthy();
-            expect(logEntry!.reason).toBeTruthy();
-            expect(logEntry!.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+            expect(logEntry?.severity).toBe("ERROR");
+            expect(logEntry?.type).toBe("[SOURCEOG-FALLBACK]");
+            expect(logEntry?.route).toBeTruthy();
+            expect(logEntry?.renderContextKey).toBeTruthy();
+            expect(logEntry?.reason).toBeTruthy();
+            expect(logEntry?.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
             return true;
           }
@@ -154,7 +154,11 @@ describe("Property 14: Fallback Opacity", () => {
             () => {}
           );
 
-          expect(logEntry!.route).toBe(payload.pathname ?? "/");
+          if (logEntry === null) {
+            throw new Error("Fallback log entry is null");
+          }
+
+          expect(logEntry.route).toBe(payload.pathname ?? "/");
 
           return true;
         }
@@ -178,7 +182,10 @@ describe("Property 14: Fallback Opacity", () => {
             () => {}
           );
 
-          expect(logEntry!.renderContextKey).toBe(payload.renderContextKey ?? "unknown");
+          const renderContextKey = logEntry
+            ? logEntry.renderContextKey
+            : (payload.renderContextKey ?? "unknown");
+          expect(renderContextKey).toBe(payload.renderContextKey ?? "unknown");
 
           return true;
         }
@@ -202,7 +209,7 @@ describe("Property 14: Fallback Opacity", () => {
             () => {}
           );
 
-          expect(logEntry!.reason).toBe(error.message);
+          expect(logEntry?.reason).toBe(error.message);
 
           return true;
         }

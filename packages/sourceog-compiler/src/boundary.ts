@@ -569,7 +569,8 @@ export async function computeRouteRuntimeCapability(
   const queue: string[] = [routeFile];
 
   while (queue.length > 0) {
-    const filePath = queue.shift()!;
+    const filePath = queue.shift();
+    if (!filePath) continue;
     if (visited.has(filePath)) continue;
     visited.add(filePath);
 
@@ -581,8 +582,8 @@ export async function computeRouteRuntimeCapability(
     }
 
     const lines = source.split(/\r?\n/);
-    const importPattern = /\bimport\s+(?:[^'"]*?from\s+)?['"]([^'"]+)['"]/g;
-    const requirePattern = /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+    const importPattern = /\bimport\s+(?:[^'\"]*?from\s+)?['\"]([^'\"]+)['\"]/g;
+    const requirePattern = /\brequire\s*\(\s*['\"]([^'\"]+)['\"]\s*\)/g;
 
     for (const pattern of [importPattern, requirePattern]) {
       let match: RegExpExecArray | null;
@@ -597,7 +598,7 @@ export async function computeRouteRuntimeCapability(
           let lineNum = 1;
           let lineStart = 0;
           for (let i = 0; i < lines.length; i++) {
-            const lineLen = lines[i]!.length + 1; // +1 for newline
+            const lineLen = lines[i].length + 1; // +1 for newline
             if (charCount + lineLen > matchIndex) {
               lineNum = i + 1;
               lineStart = charCount;

@@ -148,8 +148,8 @@ async function createReleaseEvidenceDiffReport(
         .filter((id) => baselineEntries.has(id))
         .map((id) => ({
           id,
-          from: baselineEntries.get(id)!.status,
-          to: currentEntries.get(id)!.status,
+          from: baselineEntries.get(id)?.status,
+          to: currentEntries.get(id)?.status,
         }))
         .filter((change) => change.from !== change.to),
     };

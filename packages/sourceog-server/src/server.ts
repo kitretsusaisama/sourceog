@@ -672,7 +672,7 @@ async function handleFlightRequest(
       return true;
     }
 
-    const routeId = decodeURIComponent(newFlightMatch[1]!);
+    const routeId = decodeURIComponent(newFlightMatch[1] ?? '');
     const requestedPathname = request.url.searchParams.get("pathname") ?? `/${routeId}`;
     const syntheticRequest = {
       ...request,

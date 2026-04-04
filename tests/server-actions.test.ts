@@ -63,7 +63,7 @@ describe.sequential("server actions", () => {
     });
 
     try {
-      const response = await instance.fetch(`/__sourceog/actions/${encodeURIComponent(actionId!)}`, {
+      const response = await instance.fetch(`/__sourceog/actions/${encodeURIComponent(actionId ?? '')}`, {
         method: "POST",
         headers: {
           "content-type": "application/json"

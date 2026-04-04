@@ -74,7 +74,7 @@ describe("Property 1: Manifest ID Stability", () => {
 
           const keys = Object.keys(first);
           for (const key of keys) {
-            if (first[key]!.id !== second[key]!.id) {
+            if (first[key]?.id !== second[key]?.id) {
               return false;
             }
           }

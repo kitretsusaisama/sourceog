@@ -42,7 +42,10 @@ describe("edge capability enforcement", () => {
       const capability = await computeRouteRuntimeCapability(routeFile, "page:/test", "edge");
 
       expect(capability.violations.length).toBeGreaterThan(0);
-      const violation = capability.violations[0]!;
+      const violation = capability.violations[0];
+      if (!violation) {
+        throw new Error("Expected at least one violation");
+      }
       expect(violation.importPath).toBe("node:fs");
       expect(violation.importedBy).toBe(routeFile);
       expect(violation.line).toBe(1);
@@ -73,9 +76,9 @@ describe("edge capability enforcement", () => {
       const capability = await computeRouteRuntimeCapability(routeFile, "page:/crypto-route", "edge");
 
       expect(capability.violations.length).toBeGreaterThan(0);
-      const violation = capability.violations[0]!;
-      expect(violation.importPath).toBe("node:crypto");
-      expect(violation.line).toBe(3);
+      const violation = capability.violations[0];
+      expect(violation?.importPath).toBe("node:crypto");
+      expect(violation?.line).toBe(3);
     });
   });
 
@@ -127,7 +130,7 @@ describe("edge capability enforcement", () => {
       // The violation should point to deep.ts where the actual import is
       const violation = capability.violations.find((v) => v.importPath === "node:path");
       expect(violation).toBeDefined();
-      expect(violation!.importedBy).toContain("deep.ts");
+      expect(violation?.importedBy ?? []).toContain("deep.ts");
     });
 
     it("does not flag transitive imports that are not node-only", async () => {

@@ -74,11 +74,11 @@ function matchRouteCollection(
   );
 
   const parallelRoutes = Object.fromEntries(
-    relatedParallelCandidates.map((candidate) => [candidate.graph.slotName!, candidate.route])
+    relatedParallelCandidates.map((candidate) => [candidate.graph?.slotName, candidate.route])
   );
 
   const parallelRouteMap = Object.fromEntries(
-    relatedParallelCandidates.map((candidate) => [candidate.graph.slotName!, candidate.route.id])
+    relatedParallelCandidates.map((candidate) => [candidate.graph?.slotName, candidate.route.id])
   );
 
   return {

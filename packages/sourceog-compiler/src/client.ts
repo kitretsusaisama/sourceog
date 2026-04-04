@@ -960,7 +960,10 @@ export async function discoverClientBoundaries(
   const queue: string[] = [...entryFiles];
 
   while (queue.length > 0) {
-    const filePath = queue.shift()!;
+    const filePath = queue.shift();
+    if (!filePath) {
+      continue;
+    }
     const key = normalizePath(filePath);
 
     if (visited.has(key)) {

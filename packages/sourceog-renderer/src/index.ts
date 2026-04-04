@@ -176,7 +176,7 @@ export function computeCanonicalRouteId(
   const stableParams = Object.keys(params)
     .sort()
     .reduce<Record<string, string>>((accumulator, key) => {
-      accumulator[key] = params[key]!;
+      accumulator[key] = params[key] != null ? params[key] : '';
       return accumulator;
     }, {});
   return createHash("sha256")

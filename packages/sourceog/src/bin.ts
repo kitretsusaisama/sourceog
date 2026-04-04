@@ -70,7 +70,7 @@ function printHelp(command?: CommandName): void {
     doctor: ["sourceog doctor [path] [--cwd <dir>] [--area <all|runtime|package|docs|examples|migration|benchmark|security>]"],
     release: ["sourceog release [path] [--cwd <dir>] [--output <dir>] [--diff <bundle-or-index>] [--skipTypecheck] [--skipTests] [--sign]"],
     inspect: ["sourceog inspect <manifest|governance|route|graph|cache|action> [selector] [--cwd <dir>] [--compare <dir>] [--format <json|text>]"],
-    explain: ["sourceog explain <route|decision> [selector] [--cwd <dir>] [--format <json|text>]"]
+    explain: ["sourceog explain <route|decision> [selector] [--cwd <dir>] [--format <json|text>]" ]
   };
 
   const lines = command ? commandText[command] : common;
@@ -87,7 +87,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const flags = new Map<string, string | true>();
 
   for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index]!;
+    const token = tokens[index];
     if (!token.startsWith("--")) {
       positionals.push(token);
       continue;
@@ -114,10 +114,12 @@ function parseArgs(argv: string[]): ParsedArgs {
     ? positionals[2] ?? "."
     : positionals[0] ?? ".";
 
+  const portStr = readValue("--port");
+
   return {
     command,
     cwd: path.resolve(readValue("--cwd") ?? process.cwd(), rawTarget),
-    port: readValue("--port") ? Number.parseInt(readValue("--port")!, 10) : undefined,
+    port: portStr ? Number.parseInt(portStr, 10) : undefined,
     outDir: readValue("--output") ?? readValue("--outDir"),
     area: readValue("--area"),
     subject,

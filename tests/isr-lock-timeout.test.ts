@@ -7,9 +7,11 @@ describe("ISRCoordinator - acquireLock timeout logic", () => {
     const lock = await coordinator.acquireLock("/home");
     expect(lock).not.toBeNull();
     expect(lock?.routeKey).toBe("/home");
-    await coordinator.releaseLock(lock!);
+    if (!lock) {
+      throw new Error("Failed to acquire lock, lock is null");
+    }
+    await coordinator.releaseLock(lock);
   });
-
   it("returns null after timeout when lock is already held", async () => {
     // Use a very short timeout so the test completes quickly
     const coordinator = new ISRCoordinator({ lockTimeoutMs: 30 });
@@ -20,18 +22,23 @@ describe("ISRCoordinator - acquireLock timeout logic", () => {
     const second = await coordinator.acquireLock("/blog");
     expect(second).toBeNull();
 
-    await coordinator.releaseLock(held!);
+    if (!held) {
+      throw new Error("Expected held not to be null");
+    }
+    await coordinator.releaseLock(held);
   }, 5_000);
 
   it("acquires lock successfully after the previous lock is released", async () => {
     const coordinator = new ISRCoordinator();
     const first = await coordinator.acquireLock("/about");
     expect(first).not.toBeNull();
-    await coordinator.releaseLock(first!);
+    if (first === null) throw new Error("Expected first lock to be non-null");
+    await coordinator.releaseLock(first);
 
     const second = await coordinator.acquireLock("/about");
     expect(second).not.toBeNull();
-    await coordinator.releaseLock(second!);
+    if (second === null) throw new Error("Expected second lock to be non-null");
+    await coordinator.releaseLock(second);
   });
 
   it("respects a short timeout on a contended lock", async () => {
@@ -47,6 +54,8 @@ describe("ISRCoordinator - acquireLock timeout logic", () => {
     // Should have returned within a reasonable window (not hung forever)
     expect(elapsed).toBeLessThan(500);
 
-    await coordinator.releaseLock(held!);
+    if (held) {
+      await coordinator.releaseLock(held);
+    }
   }, 5_000);
 });

@@ -63,6 +63,9 @@ describe.sequential("rsc worker pool", () => {
     const match = matchPageRoute(manifest, "/about");
 
     expect(match).not.toBeNull();
+    if (!match) {
+      throw new Error('Expected match to be non-null');
+    }
 
     const pool = new RscWorkerPool({
       workerCount: 1,
@@ -76,17 +79,17 @@ describe.sequential("rsc worker pool", () => {
 
     try {
       const first = await pool.render(
-        match!.route,
+        match.route,
         createRequestContext("http://sourceog.local/about"),
-        { parallelRoutes: match!.parallelRoutes }
+        { parallelRoutes: match.parallelRoutes }
       );
 
       const afterFirst = pool.getStats();
 
       const second = await pool.render(
-        match!.route,
+        match.route,
         createRequestContext("http://sourceog.local/about"),
-        { parallelRoutes: match!.parallelRoutes }
+        { parallelRoutes: match.parallelRoutes }
       );
 
       const afterSecond = pool.getStats();

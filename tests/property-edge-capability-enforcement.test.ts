@@ -36,11 +36,13 @@ afterEach(async () => {
 /** Picks a random module from NODE_ONLY_MODULES */
 function arbitraryNodeOnlyModule(): fc.Arbitrary<string> {
   const modules = [...NODE_ONLY_MODULES];
-  return fc.integer({ min: 0, max: modules.length - 1 }).map((i) => modules[i]!);
-}
-
-/** Generates a valid route ID string */
-function arbitraryRouteId(): fc.Arbitrary<string> {
+  return fc.integer({ min: 0, max: modules.length - 1 }).map((i) => {
+    const mod = modules[i];
+    if (mod === undefined) {
+      throw new Error(`Module at index ${i} is undefined`);
+    }
+    return mod;
+  });
   return fc
     .array(fc.stringMatching(/^[a-z][a-z0-9-]*$/), { minLength: 1, maxLength: 3 })
     .map((parts) => `page:/${parts.join("/")}`);
