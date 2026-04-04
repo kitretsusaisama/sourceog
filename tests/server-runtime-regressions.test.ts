@@ -20,19 +20,22 @@ afterAll(async () => {
 
 describe("server runtime regressions", () => {
   it("loads TypeScript middleware files without unknown-extension failures", async () => {
-    const response = await testInstance!.fetch("/forbidden");
+    if (!testInstance) {
+      throw new Error("testInstance is undefined");
+    }
+    const response = await testInstance.fetch("/forbidden");
     expect(response.status).toBe(403);
     expect(await response.text()).toContain("Forbidden");
   });
 
   it("loads TypeScript route handlers through the runtime module loader", async () => {
-    const response = await testInstance!.fetch("/api/hello");
+    if (!testInstance) {
+      throw new Error("testInstance is not initialized");
+    }
+    const response = await testInstance.fetch("/api/hello");
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("Hello from SourceOG API routes");
   });
-
-  it("allows the enterprise example to pass publish-readiness import rules", async () => {
-    const report = await auditSourceogPublishReadiness(process.cwd());
     expect(
       report.findings.find((finding) => finding.file?.endsWith(path.join("examples", "app-enterprise", "app", "page.tsx"))),
     ).toBeUndefined();

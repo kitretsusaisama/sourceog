@@ -51,7 +51,10 @@ export class ConsistencyGraph {
     const clientNodes: string[] = [];
 
     while (queue.length > 0) {
-      const currentId = queue.shift()!;
+      const currentId = queue.shift();
+      if (currentId === undefined) {
+        continue;
+      }
       if (visited.has(currentId)) {
         continue;
       }
@@ -87,7 +90,10 @@ export class ConsistencyGraph {
     const result: GraphNode[] = [];
 
     while (queue.length > 0) {
-      const current = queue.shift()!;
+      const current = queue.shift();
+      if (!current) {
+        continue;
+      }
       if (current.depth >= maxDepth) {
         continue;
       }

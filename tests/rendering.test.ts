@@ -112,21 +112,21 @@ describe("renderer", () => {
     ];
 
     const result = await renderRouteToCanonicalResult(
-      match!.route,
+      match?.route,
       {
         ...createRequestContext("http://sourceog.local/about"),
-        params: match!.params,
+        params: match?.params,
         query: new URLSearchParams()
       },
       {
         pathname: "/about",
         routeIdentity: {
-          canonicalRouteId: match!.canonicalRouteId,
-          resolvedRouteId: match!.resolvedRouteId,
-          renderContextKey: match!.renderContextKey,
-          renderContext: match!.renderContext,
-          intercepted: match!.intercepted,
-          parallelRouteMap: match!.parallelRouteMap
+          canonicalRouteId: match?.canonicalRouteId,
+          resolvedRouteId: match?.resolvedRouteId,
+          renderContextKey: match?.renderContextKey,
+          renderContext: match?.renderContext,
+          intercepted: match?.intercepted,
+          parallelRouteMap: match?.parallelRouteMap
         },
         clientAssets: {
           runtimeHref: "/__sourceog/client.js",
@@ -139,7 +139,7 @@ describe("renderer", () => {
           boundaryRefs,
           actionEntries: []
         },
-        parallelRoutes: match!.parallelRoutes
+        parallelRoutes: match?.parallelRoutes
       }
     );
 
@@ -175,20 +175,20 @@ describe("renderer", () => {
     ];
 
     const response = await renderRouteToResponse(
-      match!.route,
+      match?.route,
       {
         ...createRequestContext("http://sourceog.local/about"),
-        params: match!.params,
+        params: match?.params,
         query: new URLSearchParams()
       },
       {
         routeIdentity: {
-          canonicalRouteId: match!.canonicalRouteId,
-          resolvedRouteId: match!.resolvedRouteId,
-          renderContextKey: match!.renderContextKey,
-          renderContext: match!.renderContext,
-          intercepted: match!.intercepted,
-          parallelRouteMap: match!.parallelRouteMap
+          canonicalRouteId: match?.canonicalRouteId,
+          resolvedRouteId: match?.resolvedRouteId,
+          renderContextKey: match?.renderContextKey,
+          renderContext: match?.renderContext,
+          intercepted: match?.intercepted,
+          parallelRouteMap: match?.parallelRouteMap
         },
         clientAssets: {
           runtimeHref: "/__sourceog/client.js",

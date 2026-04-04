@@ -49,9 +49,11 @@ class ManifestContentCache {
     });
 
     if (this.cache.size > this.max) {
-      const oldest = this.cache.keys().next().value!;
-      this.cache.delete(oldest);
-      logger.debug(`Evicted manifest from cache: ${oldest}`);
+      const oldest = this.cache.keys().next().value;
+      if (oldest) {
+        this.cache.delete(oldest);
+        logger.debug(`Evicted manifest from cache: ${oldest}`);
+      }
     }
   }
 

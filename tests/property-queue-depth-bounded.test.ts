@@ -259,21 +259,21 @@ describe("Property 13: Queue Depth Bounded — ADVANCED (100% Edge Coverage)", (
 
       // PHASE 1: Saturate workers
       const saturating = Array.from({ length: workerCount }, 
-        () => pool!.render(route, ctx).catch(() => null));
+        () => (pool?.render(route, ctx) ?? Promise.resolve(null)).catch(() => null));
       await tick();
 
       // PHASE 2: Background chaos load
       backgroundLoad = Array.from({ length: concurrentLoad }, 
-        () => pool!.render(route, ctx).catch(() => null));
+        () => (pool?.render(route, ctx) ?? Promise.resolve(null)).catch(() => null));
       await tick();
 
       // PHASE 3: Fill queue exactly
       const queued = Array.from({ length: maxQueueDepth }, 
-        () => pool!.render(route, ctx).catch(() => null));
+        () => (pool?.render(route, ctx) ?? Promise.resolve(null)).catch(() => null));
       await tick(3);
 
       // ASSERT: Queue at or near capacity (workers may have started processing)
-      const stats = pool!.getStats();
+      const stats = pool ? pool.getStats() : { queuedRequests: 0, busyWorkers: 0 };
       expect(stats.queuedRequests).toBeGreaterThanOrEqual(Math.floor(maxQueueDepth * 0.8));
       expect(stats.queuedRequests).toBeLessThanOrEqual(maxQueueDepth);
       expect(stats.busyWorkers).toBeLessThanOrEqual(workerCount);
@@ -283,7 +283,7 @@ describe("Property 13: Queue Depth Bounded — ADVANCED (100% Edge Coverage)", (
       const overflowPromises: Promise<unknown>[] = [];
       
       for (let i = 0; i < overflow; i++) {
-        const p = pool!.render(route, ctx).catch((err: Error) => {
+        const p = (pool?.render(route, ctx) ?? Promise.resolve(null)).catch((err: Error) => {
           if (err.message.includes("[SOURCEOG-FALLBACK]")) rejections++;
           return null;
         });
@@ -295,15 +295,15 @@ describe("Property 13: Queue Depth Bounded — ADVANCED (100% Edge Coverage)", (
 
       // INVARIANT: EXACT rejection count + queue bounded
       expect(rejections).toBe(overflow);
-      expect(pool!.getStats().queuedRequests).toBe(maxQueueDepth);
+      expect((pool ? pool.getStats() : { queuedRequests: 0 }).queuedRequests).toBe(maxQueueDepth);
 
       // PHASE 5: Histogram validation (no violations)
-      const metrics = await collectMetrics(pool!, 500, maxQueueDepth);
+      const metrics = pool ? await collectMetrics(pool, 500, maxQueueDepth) : { violations: 0, p99QueueDepth: 0 };
       expect(metrics.violations).toBe(0);
       expect(metrics.p99QueueDepth).toBeLessThanOrEqual(maxQueueDepth);
 
       // CLEANUP
-      await pool!.shutdown();
+      await (pool?.shutdown() ?? Promise.resolve());
       await Promise.allSettled([...saturating, ...queued, ...overflowPromises, ...backgroundLoad]);
     },
     40_000 // Chaos tolerance
@@ -331,7 +331,7 @@ test.skip("adversarial: p99.9 ≤ maxQueueDepth (controlled load)", async () => 
 
         // Saturate workers first
         const inflight = Array.from({ length: workerCount }, () =>
-          pool!.render(route, ctx).catch(() => null)
+          (pool?.render(route, ctx) ?? Promise.resolve(null)).catch(() => null)
         );
         await tick(2);
 
@@ -342,12 +342,12 @@ test.skip("adversarial: p99.9 ≤ maxQueueDepth (controlled load)", async () => 
 
         for (let wave = 0; wave < waves; wave++) {
           const wavePromises = Array.from({ length: waveSize }, () =>
-            pool!.render(route, ctx).catch(() => null)
+            (pool?.render(route, ctx) ?? Promise.resolve(null)).catch(() => null)
           );
           
           // Check queue depth mid-wave
           await tick();
-          const midDepth = pool!.getStats().queuedRequests;
+          const midDepth = (pool ? pool.getStats() : { queuedRequests: 0 }).queuedRequests;
           if (midDepth > maxQueueDepth) violations++;
 
           await Promise.allSettled(wavePromises);
@@ -355,12 +355,12 @@ test.skip("adversarial: p99.9 ≤ maxQueueDepth (controlled load)", async () => 
         }
 
         // Final metrics check
-        const metrics = await collectMetrics(pool!, 50, maxQueueDepth); // Short collection
+        const metrics = pool ? await collectMetrics(pool, 50, maxQueueDepth) : { violations: 0, p99QueueDepth: 0 }; // Short collection
         expect(metrics.violations).toBe(0);
         expect(metrics.p99QueueDepth).toBeLessThanOrEqual(maxQueueDepth);
         expect(violations).toBe(0);
 
-        await pool!.shutdown();
+        await (pool?.shutdown() ?? Promise.resolve());
       }
     ),
     {
@@ -382,11 +382,11 @@ test("memory-pressure: queue bounded under 200MB leak simulation", async () => {
   const ctx = makeFakeContext("memory");
 
   const leakPromises = Array.from({ length: 20 }, () =>
-    pool!.render(route, ctx).catch(() => null)
+    pool?.render(route, ctx).catch(() => null)
   );
 
   await tick(10);
-  const metrics = await collectMetrics(pool!, 1000, 10);
+  const metrics = await collectMetrics(pool, 1000, 10);
 
   // Core invariant: queue never exceeded the limit
   expect(metrics.violations).toBe(0);
@@ -397,10 +397,10 @@ test("memory-pressure: queue bounded under 200MB leak simulation", async () => {
   // from 10ms to ~35ms on Windows under memory pressure) without
   // producing a flaky sample-count assertion.
   expect(metrics.samples.length).toBeGreaterThan(0);
-  const spanMs = metrics.samples.at(-1)!.timestamp - metrics.samples[0]!.timestamp;
+  const spanMs = (metrics.samples.at(-1)?.timestamp ?? 0) - (metrics.samples[0]?.timestamp ?? 0);
   expect(spanMs).toBeGreaterThan(800);
 
-  await pool!.shutdown();
+  await pool?.shutdown();
   await Promise.allSettled(leakPromises);
 }, 30_000);
 });

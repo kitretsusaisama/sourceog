@@ -169,25 +169,25 @@ describe("Property 1: Worker Pool Size Invariant", () => {
             const sizeSnapshots: number[] = [];
 
             const renderPromises = Array.from({ length: requestCount }, () =>
-              pool!.render(fakeRoute, fakeContext).catch(() => null)
+              pool ? pool.render(fakeRoute, fakeContext).catch(() => null) : Promise.resolve(null)
             );
 
             // Poll pool size while renders are in flight (Req 7.2, 7.3)
             const pollInterval = setInterval(() => {
-              sizeSnapshots.push(pool!.getStats().workerCount);
+              sizeSnapshots.push(pool?.getStats().workerCount ?? 0);
             }, 0);
 
             await Promise.allSettled(renderPromises);
             clearInterval(pollInterval);
 
             // Capture final snapshot
-            sizeSnapshots.push(pool!.getStats().workerCount);
+            sizeSnapshots.push(pool ? pool.getStats().workerCount : 0);
 
             // Req 7.2, 7.3: workers.length >= workerCount at every observable point
             const violated = sizeSnapshots.some((size) => size < workerCount);
             if (violated) return false;
 
-            await pool!.shutdown();
+            await (pool ? pool.shutdown() : Promise.resolve());
             pool = undefined;
             return true;
           }

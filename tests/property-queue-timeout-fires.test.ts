@@ -147,7 +147,7 @@ describe("Property 7: Queue Timeout Fires", () => {
 
             // Saturate all workers — each render hangs because MockWorker never responds
             const saturatingRenders = Array.from({ length: workerCount }, () =>
-              pool!.render(route, ctx).catch(() => null)
+              pool?.render(route, ctx)?.catch(() => null) ?? Promise.resolve(null)
             );
 
             // Give dispatch a tick to assign the saturating renders to workers
@@ -155,9 +155,9 @@ describe("Property 7: Queue Timeout Fires", () => {
 
             // Enqueue one more request — it will be queued (all workers busy)
             let rejectionError: Error | undefined;
-            const queuedRender = pool!.render(route, ctx).catch((err: Error) => {
+            const queuedRender = pool?.render(route, ctx)?.catch((err: Error) => {
               rejectionError = err;
-            });
+            }) ?? Promise.resolve();
 
             // Wait past queueTimeoutMs — the timeout should fire
             await sleep(queueTimeoutMs + 50);
@@ -169,7 +169,7 @@ describe("Property 7: Queue Timeout Fires", () => {
               rejectionError.message.includes("[SOURCEOG-FALLBACK]");
 
             // Clean up
-            await pool!.shutdown();
+            await pool?.shutdown();
             pool = undefined;
             await Promise.allSettled(saturatingRenders);
 
@@ -206,15 +206,19 @@ describe("Property 7: Queue Timeout Fires", () => {
 
             // Saturate all workers
             const saturatingRenders = Array.from({ length: workerCount }, () =>
-              pool!.render(route, ctx).catch(() => null)
+              pool
+                ? pool.render(route, ctx).catch(() => null)
+                : Promise.resolve(null)
             );
 
             await new Promise<void>((resolve) => setImmediate(resolve));
 
             let rejected = false;
-            const queuedRender = pool!.render(route, ctx).catch(() => {
-              rejected = true;
-            });
+            const queuedRender = pool
+              ? pool.render(route, ctx).catch(() => {
+                  rejected = true;
+                })
+              : Promise.resolve();
 
             // Wait for half the timeout — should NOT have fired yet
             await sleep(Math.floor(queueTimeoutMs / 2));
@@ -222,7 +226,9 @@ describe("Property 7: Queue Timeout Fires", () => {
             const notYetRejected = !rejected;
 
             // Clean up before the timeout fires
-            await pool!.shutdown();
+            if (pool) {
+              await pool.shutdown();
+            }
             pool = undefined;
             await Promise.allSettled([...saturatingRenders, queuedRender]);
 

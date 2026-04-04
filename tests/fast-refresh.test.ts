@@ -147,10 +147,10 @@ describe("snapshotRefreshBoundary (Req 11.5)", () => {
     const snapshot = snapshotRefreshBoundary("components/Counter.tsx", registry);
 
     expect(snapshot).not.toBeNull();
-    expect(snapshot!.moduleId).toBe("components/Counter.tsx");
-    expect(snapshot!.instanceIds).toEqual(["inst-1", "inst-2"]);
-    expect(snapshot!.preservedState.get("inst-1")).toEqual({ count: 5 });
-    expect(snapshot!.preservedState.get("inst-2")).toEqual({ count: 10 });
+    expect(snapshot?.moduleId).toBe("components/Counter.tsx");
+    expect(snapshot?.instanceIds).toEqual(["inst-1", "inst-2"]);
+    expect(snapshot?.preservedState?.get("inst-1")).toEqual({ count: 5 });
+    expect(snapshot?.preservedState?.get("inst-2")).toEqual({ count: 10 });
   });
 
   it("snapshot is a copy — mutations to registry do not affect snapshot", () => {
@@ -162,10 +162,10 @@ describe("snapshotRefreshBoundary (Req 11.5)", () => {
     const snapshot = snapshotRefreshBoundary("components/A.tsx", registry);
 
     // Mutate the registry after snapshot
-    registry.get("components/A.tsx")!.stateMap.set("inst-1", { count: 99 });
+    registry.get("components/A.tsx")?.stateMap.set("inst-1", { count: 99 });
 
     // Snapshot must be unaffected
-    expect(snapshot!.preservedState.get("inst-1")).toEqual({ count: 0 });
+    expect(snapshot?.preservedState.get("inst-1")).toEqual({ count: 0 });
   });
 });
 
@@ -190,9 +190,9 @@ describe("restoreRefreshBoundaryState (Req 11.3, 11.5)", () => {
     const newComponentType = function CounterV2() {};
     restoreRefreshBoundaryState(boundary, newComponentType, registry);
 
-    const entry = registry.get("components/Counter.tsx")!;
-    expect(entry.componentType).toBe(newComponentType);
-    expect(entry.stateMap.get("inst-1")).toEqual({ count: 42 });
+    const entry = registry.get("components/Counter.tsx");
+    expect(entry?.componentType).toBe(newComponentType);
+    expect(entry?.stateMap.get("inst-1")).toEqual({ count: 42 });
   });
 
   it("does nothing when boundary is not in the fiber registry", () => {
@@ -225,7 +225,10 @@ describe("restoreRefreshBoundaryState (Req 11.3, 11.5)", () => {
 
     restoreRefreshBoundaryState(boundary, {}, registry);
 
-    const entry = registry.get("components/Widget.tsx")!;
+    const entry = registry.get("components/Widget.tsx");
+    if (!entry) {
+      throw new Error("Expected registry entry for components/Widget.tsx");
+    }
     // inst-1 gets restored
     expect(entry.stateMap.get("inst-1")).toEqual({ value: "restored" });
     // inst-outside is untouched (Req 11.3)

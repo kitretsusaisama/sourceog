@@ -1161,7 +1161,9 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
           kind: "client-browser-entry" as const,
           routeId: entry.routeId,
           pathname: entry.pathname,
-          filePath: toRelativeManifestPath(config.distRoot, entry.browserEntryAsset!)
+          filePath: entry.browserEntryAsset
+            ? toRelativeManifestPath(config.distRoot, entry.browserEntryAsset)
+            : ""
         })),
       ...clientArtifacts.routeEntries.flatMap((entry) =>
         entry.boundaryRefs
@@ -1170,7 +1172,7 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
             kind: "client-boundary-entry" as const,
             routeId: entry.routeId,
             pathname: entry.pathname,
-            filePath: toRelativeManifestPath(config.distRoot, boundaryRef.assetFilePath!),
+            filePath: boundaryRef.assetFilePath ? toRelativeManifestPath(config.distRoot, boundaryRef.assetFilePath) : undefined,
             chunkId: boundaryRef.boundaryId
           }))
       ),
@@ -1198,7 +1200,9 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
           kind: "flight" as const,
           routeId: entry.routeId,
           pathname: entry.pathname,
-          filePath: toRelativeManifestPath(config.distRoot, entry.flightFilePath!)
+          filePath: entry.flightFilePath
+            ? toRelativeManifestPath(config.distRoot, entry.flightFilePath)
+            : undefined
         })),
       ...publicAssetPaths.map((filePath) => ({
         kind: "public" as const,

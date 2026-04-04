@@ -80,7 +80,7 @@ function extractRootApiNames(indexSource: string): string[] {
   let match: RegExpExecArray | null;
 
   while ((match = exportBlock.exec(indexSource)) !== null) {
-    for (const rawPart of match[1]!.split(",")) {
+    for (const rawPart of match[1].split(",")) {
       const part = rawPart.replace(/\s+/g, " ").trim();
       if (!part || part.startsWith("type ")) {
         continue;

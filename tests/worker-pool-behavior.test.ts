@@ -188,8 +188,8 @@ describe("RscWorkerPool unit tests", () => {
     await pool.initialize();
 
     // Make the single worker hang indefinitely
-    const worker = createdWorkers[0]!;
-    worker.setPostMessageHandler(() => {
+    const worker = createdWorkers[0];
+    worker?.setPostMessageHandler(() => {
       // intentionally never respond
     });
 
@@ -202,7 +202,7 @@ describe("RscWorkerPool unit tests", () => {
     // Second render should be queued and time out
     await expect(pool.render(route, ctx)).rejects.toThrow(/SOURCEOG-FALLBACK/);
 
-    worker.simulateCrash(1);
+    worker?.simulateCrash(1);
     await hangingRender;
   }, 10_000);
 
@@ -255,10 +255,10 @@ describe("RscWorkerPool unit tests", () => {
     });
     await pool.initialize();
 
-    const worker = createdWorkers[0]!;
+    const worker = createdWorkers[0];
 
     // Make the worker hang so there's an in-flight request when it crashes
-    worker.setPostMessageHandler(() => {
+    worker?.setPostMessageHandler(() => {
       // never respond
     });
 
@@ -268,7 +268,7 @@ describe("RscWorkerPool unit tests", () => {
     const renderPromise = pool.render(route, ctx).catch(() => null);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-    worker.simulateCrash(1);
+    worker?.simulateCrash(1);
 
     await renderPromise;
     await new Promise((resolve) => setTimeout(resolve, 50));

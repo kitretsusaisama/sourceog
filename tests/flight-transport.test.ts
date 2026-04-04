@@ -190,7 +190,7 @@ describe("Flight transport — stream error handling (Req 3.6)", () => {
 
     const logCall = consoleSpy.mock.calls[0];
     expect(logCall).toBeDefined();
-    const logPayload = logCall![1] as Record<string, unknown>;
+    const logPayload = logCall?.[1] as Record<string, unknown>;
 
     expect(logPayload.route).toBe(routeId);
     expect(logPayload.message).toBe("Manifest not found");
@@ -253,7 +253,7 @@ describe("Flight transport — bootstrap script injection (Req 3.8)", () => {
     // Must be valid JSON-parseable context
     const jsonMatch = script.match(/window\.__SOURCEOG_CLIENT_CONTEXT__=({.+});/);
     expect(jsonMatch).not.toBeNull();
-    const parsed = JSON.parse(jsonMatch![1]!);
+    const parsed = JSON.parse(jsonMatch?.[1] ?? '');
 
     expect(parsed.renderMode).toBe("server-components");
     expect(parsed.canonicalRouteId).toBe(canonicalRouteId);
@@ -335,7 +335,7 @@ describe("Flight transport — bootstrap script injection (Req 3.8)", () => {
     expect(script).toContain(manifestUrl);
 
     const jsonMatch = script.match(/window\.__SOURCEOG_CLIENT_CONTEXT__=({.+});/);
-    const parsed = JSON.parse(jsonMatch![1]!);
+    const parsed = JSON.parse(jsonMatch?.[1] ?? '');
     expect(parsed.clientReferenceManifestUrl).toBe(manifestUrl);
   });
 
@@ -359,7 +359,10 @@ describe("Flight transport — bootstrap script injection (Req 3.8)", () => {
 
     const script = buildBootstrapScript(context);
     const jsonMatch = script.match(/window\.__SOURCEOG_CLIENT_CONTEXT__=({.+});/);
-    const parsed = JSON.parse(jsonMatch![1]!);
+    if (!jsonMatch || !jsonMatch[1]) {
+      throw new Error("Failed to extract client context JSON from bootstrap script");
+    }
+    const parsed = JSON.parse(jsonMatch[1]);
 
     expect(parsed.intercepted).toBe(true);
     expect(parsed.interceptedFrom).toBe("/gallery");

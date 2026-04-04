@@ -179,7 +179,10 @@ export function useActionQueue<TResult = unknown>(): ActionQueueApi<TResult> {
       forceRender((value) => value + 1);
 
       while (queueRef.current.length > 0) {
-        const next = queueRef.current.shift()!;
+        const next = queueRef.current.shift();
+        if (!next) {
+          break;
+        }
         try {
           const result = await invokeAction<TResult>(next.action, next.args);
           statusRef.current = {

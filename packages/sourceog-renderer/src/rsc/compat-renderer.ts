@@ -30,7 +30,7 @@ async function getRenderer(): Promise<RenderToPipeableStreamFn> {
     // @ts-ignore - React Server DOM Webpack is not typed in standard React types
     const mod = await import('react-server-dom-webpack/server.node');
     _renderToPipeableStream = mod.renderToPipeableStream;
-    return _renderToPipeableStream!;
+    return _renderToPipeableStream;
   } catch (error) {
     logger.error('Failed to load react-server-dom-webpack. Ensure "react-server-dom-webpack" is installed.', error);
     throw new RenderError(

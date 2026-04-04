@@ -82,7 +82,11 @@ describe("parallel routes", () => {
     expect(match?.renderContextKey).toBe("canonical:/dashboard");
     expect(match?.intercepted).toBe(false);
 
-    const response = await renderRouteToResponse(match!.route, {
+    if (!match) {
+      throw new Error("Failed to find route match for /dashboard");
+    }
+
+    const response = await renderRouteToResponse(match.route, {
       request: {
         url: new URL("http://sourceog.local/dashboard"),
         method: "GET",
@@ -100,7 +104,7 @@ describe("parallel routes", () => {
       params: {},
       query: new URLSearchParams()
     }, {
-      parallelRoutes: match!.parallelRoutes
+      parallelRoutes: match.parallelRoutes
     });
 
     const html = await readResponseBody(response);

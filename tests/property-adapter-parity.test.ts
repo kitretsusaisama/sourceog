@@ -85,7 +85,10 @@ function makeMockNodeReq(method: string, url: string, body?: string): IncomingMe
 }
 
 async function runNode(method: string, pathname: string, body?: string) {
-  const handler = nodeAdapter.createRequestHandler!(TEST_MANIFEST) as (req: IncomingMessage, res: ServerResponse) => void;
+  if (!nodeAdapter.createRequestHandler) {
+    throw new Error('createRequestHandler is not available on nodeAdapter');
+  }
+  const handler = nodeAdapter.createRequestHandler(TEST_MANIFEST) as (req: IncomingMessage, res: ServerResponse) => void;
   const req = makeMockNodeReq(method, pathname, body);
   let capturedBody = "";
   let capturedStatus = 200;
@@ -120,11 +123,15 @@ function makeWebReq(method: string, pathname: string, body?: string): Request {
 }
 
 async function runCloudflare(method: string, pathname: string, body?: string) {
-  const handler = cloudflareAdapter.createRequestHandler!(TEST_MANIFEST) as (
-    req: Request,
-    env: Record<string, unknown>,
-    ctx: { waitUntil(p: Promise<unknown>): void; passThroughOnException(): void }
-  ) => Promise<Response>;
+  const handler = cloudflareAdapter.createRequestHandler
+    ? cloudflareAdapter.createRequestHandler(TEST_MANIFEST) as (
+      req: Request,
+      env: Record<string, unknown>,
+      ctx: { waitUntil(p: Promise<unknown>): void; passThroughOnException(): void }
+    ) => Promise<Response>
+    : async (_req: Request, _env: Record<string, unknown>, _ctx: { waitUntil(p: Promise<unknown>): void; passThroughOnException(): void }) => {
+        throw new Error('createRequestHandler is not available');
+      };
   const res = await handler(makeWebReq(method, pathname, body), {}, {
     waitUntil: () => {},
     passThroughOnException: () => {},
@@ -133,13 +140,13 @@ async function runCloudflare(method: string, pathname: string, body?: string) {
 }
 
 async function runVercelEdge(method: string, pathname: string, body?: string) {
-  const handler = vercelEdgeAdapter.createRequestHandler!(TEST_MANIFEST) as (req: Request) => Promise<Response>;
+  const handler = vercelEdgeAdapter.createRequestHandler?.(TEST_MANIFEST) as (req: Request) => Promise<Response>;
   const res = await handler(makeWebReq(method, pathname, body));
   return { status: res.status, body: await res.text() };
 }
 
 async function runVercelNode(method: string, pathname: string, body?: string) {
-  const handler = vercelNodeAdapter.createRequestHandler!(TEST_MANIFEST) as (req: unknown, res: unknown) => void;
+  const handler = vercelNodeAdapter.createRequestHandler?.(TEST_MANIFEST) as (req: unknown, res: unknown) => void;
   const req = new EventEmitter() as unknown as IncomingMessage;
   const r = req as unknown as Record<string, unknown>;
   r.method = method;

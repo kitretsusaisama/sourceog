@@ -86,7 +86,10 @@ describe("browser runtime behavior", () => {
       const match = script.match(/window\.__SOURCEOG_CLIENT_CONTEXT__=(\{.*?\});/s);
       expect(match).not.toBeNull();
 
-      const parsed = JSON.parse(match![1]!);
+      if (!match || !match[1]) {
+        throw new Error('Expected client context JSON match');
+      }
+      const parsed = JSON.parse(match[1]);
 
       // Req 5.2: intercepted must be true
       expect(parsed.intercepted).toBe(true);
@@ -116,7 +119,10 @@ describe("browser runtime behavior", () => {
 
       const script = buildBootstrapScript(context);
       const match = script.match(/window\.__SOURCEOG_CLIENT_CONTEXT__=(\{.*?\});/s);
-      const parsed = JSON.parse(match![1]!);
+      if (!match?.[1]) {
+        throw new Error('Expected client context in bootstrap script');
+      }
+      const parsed = JSON.parse(match[1]);
 
       expect(parsed.intercepted).toBe(false);
       expect(parsed.interceptedFrom).toBeUndefined();

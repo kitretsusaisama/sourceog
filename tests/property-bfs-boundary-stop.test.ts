@@ -181,7 +181,8 @@ function reachableWithoutCrossingClientBoundary(
   const queue = [...entryFiles];
 
   while (queue.length > 0) {
-    const filePath = queue.shift()!;
+    const filePath = queue.shift();
+    if (filePath === undefined) continue;
     if (reachable.has(filePath)) continue;
 
     const node = nodeByPath.get(filePath);

@@ -29,7 +29,7 @@ function getMemoMap(): Map<string, Response | Promise<Response>> | null {
   if (!memoizationMap.has(ctx)) {
     memoizationMap.set(ctx, new Map());
   }
-  return memoizationMap.get(ctx)!;
+  return memoizationMap.get(ctx) ?? null;
 }
 
 function getMemoTagMap(): Map<string, Set<string>> | null {
@@ -38,7 +38,7 @@ function getMemoTagMap(): Map<string, Set<string>> | null {
   if (!memoTagMap.has(ctx)) {
     memoTagMap.set(ctx, new Map());
   }
-  return memoTagMap.get(ctx)!;
+  return memoTagMap.get(ctx) ?? new Map();
 }
 
 export function getRequestMemoizationEntryCount(): number {

@@ -79,7 +79,7 @@ describe("buildClientReferenceManifest", () => {
     const second = await buildClientReferenceManifest([module], chunkGraph, distRoot);
 
     for (const key of Object.keys(first)) {
-      expect(first[key]!.id).toBe(second[key]!.id);
+      expect(first[key]?.id).toBe(second[key]?.id);
     }
   });
 
@@ -141,7 +141,9 @@ describe("buildClientReferenceManifest", () => {
     });
 
     const manifest = await buildClientReferenceManifest([module], chunkGraph, distRoot);
-    const entry = Object.values(manifest)[0]!;
+    const values = Object.values(manifest);
+    expect(values.length).toBeGreaterThan(0);
+    const entry = values[0];
 
     expect(entry.id).toHaveLength(16);
     expect(entry.id).toMatch(/^[0-9a-f]{16}$/);

@@ -74,7 +74,12 @@ describe.sequential("release gate", () => {
     expect(report.artifactPaths.supportMatrix).toContain("support-matrix.json");
 
     const deploymentSignatureManifest = JSON.parse(
-      await fs.readFile(report.buildResult.deploymentManifest.manifests.deploymentSignatureManifest!, "utf8"),
+      await fs.readFile(
+        report.buildResult.deploymentManifest.manifests.deploymentSignatureManifest
+          ? report.buildResult.deploymentManifest.manifests.deploymentSignatureManifest
+          : "",
+        "utf8",
+      ),
     ) as {
       signatures: { compiler: string; runtime: string; deployment: string };
       artifactSignatureManifestPath: string;
@@ -85,7 +90,12 @@ describe.sequential("release gate", () => {
     );
 
     const governanceAuditManifest = JSON.parse(
-      await fs.readFile(report.buildResult.deploymentManifest.manifests.governanceAuditManifest!, "utf8"),
+      await fs.readFile(
+        report.buildResult.deploymentManifest.manifests.governanceAuditManifest
+          ? report.buildResult.deploymentManifest.manifests.governanceAuditManifest
+          : "",
+        "utf8",
+      ),
     ) as {
       laws: { doctorLaw: boolean; replayLaw: boolean; policyLaw: boolean; runtimeLaw: boolean; governanceLaw: boolean };
       runtimeContract: { artifactOnlyProduction: boolean; sourceProbingDisallowed: boolean; transpilerFallbackDisallowed: boolean };

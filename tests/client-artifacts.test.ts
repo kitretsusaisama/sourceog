@@ -45,19 +45,19 @@ describe("client artifacts", () => {
     expect(playgroundEntry).toBeDefined();
     expect(playgroundEntry?.hydrationMode).toBe("full-route");
     expect(playgroundEntry?.generatedEntryFile?.endsWith(".tsx")).toBe(true);
-    expect(existsSync(playgroundEntry!.generatedEntryFile!)).toBe(true);
-    expect(existsSync(playgroundEntry!.browserEntryAsset!)).toBe(true);
-    expect(existsSync(playgroundEntry!.outputAsset)).toBe(true);
-    expect(existsSync(playgroundEntry!.metadataAsset)).toBe(true);
-    expect(playgroundEntry!.routeChunkIds.length).toBeGreaterThan(0);
-    expect(playgroundEntry!.ownershipHash).toHaveLength(16);
-    expect(playgroundEntry!.preloadAssets).toContain(artifacts.runtimeAsset);
+    expect(playgroundEntry?.generatedEntryFile ? existsSync(playgroundEntry.generatedEntryFile) : false).toBe(true);
+    expect(playgroundEntry?.browserEntryAsset ? existsSync(playgroundEntry.browserEntryAsset) : false).toBe(true);
+    expect(playgroundEntry?.outputAsset ? existsSync(playgroundEntry.outputAsset) : false).toBe(true);
+    expect(playgroundEntry?.metadataAsset ? existsSync(playgroundEntry.metadataAsset) : false).toBe(true);
+    expect((playgroundEntry?.routeChunkIds?.length ?? 0)).toBeGreaterThan(0);
+    expect(playgroundEntry?.ownershipHash ?? "").toHaveLength(16);
+    expect(playgroundEntry?.preloadAssets ?? []).toContain(artifacts.runtimeAsset);
 
-    const entrySource = readFileSync(playgroundEntry!.generatedEntryFile!, "utf8");
+    const entrySource = playgroundEntry?.generatedEntryFile ? readFileSync(playgroundEntry.generatedEntryFile, "utf8") : "";
     expect(entrySource).toContain('hydrateRoot');
     expect(entrySource).toContain("RouteComponent");
 
-    const routeChunkSource = readFileSync(playgroundEntry!.outputAsset, "utf8");
+    const routeChunkSource = playgroundEntry?.outputAsset ? readFileSync(playgroundEntry.outputAsset, "utf8") : "";
     expect(routeChunkSource).toContain("ownershipHash");
     expect(routeChunkSource).toContain("sharedChunkIds");
 
@@ -67,9 +67,25 @@ describe("client artifacts", () => {
     expect(aboutEntry?.browserEntryAsset).toBeUndefined();
     expect(aboutEntry?.hasClientBoundaries).toBe(true);
     expect(aboutEntry?.clientBoundaryModuleIds).toContain("./ClientCounter");
-    expect(aboutEntry?.boundaryRefs.some((boundary) => boundary.moduleId === "./ClientCounter" && boundary.bootstrapStrategy === "hydrate-island" && Boolean(boundary.assetFilePath) && Boolean(boundary.assetHref))).toBe(true);
-    expect(aboutEntry?.boundaryRefs.every((boundary) => !boundary.assetFilePath || existsSync(boundary.assetFilePath))).toBe(true);
-    expect(aboutEntry?.preloadAssets.some((asset) => asset.includes(path.join("static", "__sourceog", "boundaries")))).toBe(true);
+    expect(
+      aboutEntry?.boundaryRefs.some(
+        (boundary) =>
+          boundary.moduleId === "./ClientCounter" &&
+          boundary.bootstrapStrategy === "hydrate-island" &&
+          Boolean(boundary.assetFilePath) &&
+          Boolean(boundary.assetHref)
+      )
+    ).toBe(true);
+    expect(
+      aboutEntry?.boundaryRefs.every(
+        (boundary) => !boundary.assetFilePath || existsSync(boundary.assetFilePath)
+      )
+    ).toBe(true);
+    expect(
+      aboutEntry?.preloadAssets.some(
+        (asset) => asset.includes(path.join("static", "__sourceog", "boundaries"))
+      )
+    ).toBe(true);
     expect(aboutEntry?.actionIds.length).toBeGreaterThan(0);
   }, 75_000);
 });

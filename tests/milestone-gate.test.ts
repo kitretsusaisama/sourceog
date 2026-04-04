@@ -169,8 +169,11 @@ describe("M3-001: clientReferenceCount check", () => {
     const result = await verifyMilestone3Runtime(buildResult);
     const check = result.failingChecks.find((c) => c.id === "M3-001");
     expect(check).toBeDefined();
-    expect(check!.invariantViolated).toBe("INV-002");
-    expect(check!.details).toContain("page:/broken");
+    if (!check) {
+      throw new Error("Expected failing check with id M3-001, but none was found");
+    }
+    expect(check.invariantViolated).toBe("INV-002");
+    expect(check.details).toContain("page:/broken");
   });
 });
 
@@ -202,7 +205,7 @@ describe("M3-002: hydrateRoot at document root check", () => {
     const result = await verifyMilestone3Runtime(buildResult);
     const check = result.failingChecks.find((c) => c.id === "M3-002");
     expect(check).toBeDefined();
-    expect(check!.invariantViolated).toBe("INV-009");
+    expect(check?.invariantViolated).toBe("INV-009");
   });
 
   it("fails when hmr.ts calls hydrateRoot(document.documentElement, ...)", async () => {
@@ -262,7 +265,7 @@ describe("M3-003: replaceRouteBody outside catch branch check", () => {
     const result = await verifyMilestone3Runtime(buildResult);
     const check = result.failingChecks.find((c) => c.id === "M3-003");
     expect(check).toBeDefined();
-    expect(check!.invariantViolated).toBe("INV-005");
+    expect(check?.invariantViolated).toBe("INV-005");
   });
 });
 
@@ -280,7 +283,7 @@ describe("M3-005: RSC_Worker_Pool active check", () => {
     const result = await verifyMilestone3Runtime(buildResult);
     const check = result.failingChecks.find((c) => c.id === "M3-005");
     expect(check).toBeDefined();
-    expect(check!.invariantViolated).toBe("INV-006");
+    expect(check?.invariantViolated).toBe("INV-006");
   });
 
   it("fails when rsc.ts contains per-request worker spawning in render()", async () => {
@@ -345,8 +348,8 @@ describe("M3-006: Edge capability check", () => {
     const result = await verifyMilestone3Runtime(buildResult);
     const check = result.failingChecks.find((c) => c.id === "M3-006");
     expect(check).toBeDefined();
-    expect(check!.invariantViolated).toBe("INV-007");
-    expect(check!.details).toContain("page:/edge-broken");
+    expect(check?.invariantViolated).toBe("INV-007");
+    expect(check?.details).toContain("page:/edge-broken");
   });
 });
 
@@ -371,7 +374,7 @@ describe("M3-007: slot/intercept parity check", () => {
     const result = await verifyMilestone3Runtime(buildResult);
     const check = result.failingChecks.find((c) => c.id === "M3-007");
     expect(check).toBeDefined();
-    expect(check!.invariantViolated).toBe("INV-008");
+    expect(check?.invariantViolated).toBe("INV-008");
   });
 });
 
@@ -412,7 +415,7 @@ describe("M3-008: manifest symmetry check", () => {
     const result = await verifyMilestone3Runtime(buildResult);
     const check = result.failingChecks.find((c) => c.id === "M3-008");
     expect(check).toBeDefined();
-    expect(check!.invariantViolated).toBe("INV-004");
+    expect(check?.invariantViolated).toBe("INV-004");
   });
 
   it("fails when id values differ between server and browser manifests", async () => {
@@ -475,8 +478,8 @@ describe("M3-009: no data-sourceog-client-placeholder in Flight payloads", () =>
     const result = await verifyMilestone3Runtime(buildResult);
     const check = result.failingChecks.find((c) => c.id === "M3-009");
     expect(check).toBeDefined();
-    expect(check!.invariantViolated).toBe("INV-002");
-    expect(check!.details).toContain("page:/broken");
+    expect(check?.invariantViolated).toBe("INV-002");
+    expect(check?.details).toContain("page:/broken");
   });
 });
 
@@ -520,7 +523,7 @@ describe("M3-010: [SOURCEOG-FALLBACK] log entries check", () => {
     const result = await verifyMilestone3Runtime(buildResult);
     const check = result.failingChecks.find((c) => c.id === "M3-010");
     expect(check).toBeDefined();
-    expect(check!.invariantViolated).toBe("INV-005");
+    expect(check?.invariantViolated).toBe("INV-005");
   });
 
   it("fails when [SOURCEOG-FALLBACK] log appears after DOM modification", async () => {

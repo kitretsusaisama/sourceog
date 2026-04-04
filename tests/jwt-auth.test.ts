@@ -120,8 +120,8 @@ describe("JWT — unit tests", () => {
     const token = await createJWT({ userId: "abc", role: "admin" }, secret);
     const result = await verifyJWT(token, secret);
     expect(result).not.toBeNull();
-    expect(result!.userId).toBe("abc");
-    expect(result!.role).toBe("admin");
+    expect(result?.userId).toBe("abc");
+    expect(result?.role).toBe("admin");
   });
 
   it("verifyJWT returns null for a tampered token", async () => {

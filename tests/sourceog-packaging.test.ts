@@ -19,32 +19,22 @@ function run(command: string, args: string[], cwd: string): Promise<string> {
       stderr += chunk.toString();
     });
     child.on("error", reject);
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolve(stdout);
-        return;
-      }
-      reject(new Error(`${command} ${args.join(" ")} failed with exit code ${code ?? 1}: ${stderr}`));
-    });
-  });
-}
-
 describe.sequential("sourceog packaging", () => {
   it("packs a dist-only sourceog tarball", async () => {
-  const packageRoot = path.join(process.cwd(), "packages", "sourceog");
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+    const packageRoot = path.join(process.cwd(), "packages", "sourceog");
+    const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
-  // Build first — dist/ must exist before npm pack
-  await run(npmCommand, ["run", "build"], packageRoot);
+    // Build first — dist/ must exist before npm pack
+    await run(npmCommand, ["run", "build"], packageRoot);
 
-  const output = await run(npmCommand, ["pack", "--json"], packageRoot);
+    const output = await run(npmCommand, ["pack", "--json"], packageRoot);
     const result = JSON.parse(output) as Array<{
       filename: string;
       files: Array<{ path: string }>;
     }>;
 
     expect(result).toHaveLength(1);
-    const packResult = result[0]!;
+    const packResult = result[0] ?? { filename: "", files: [] };
     const packedPaths = packResult.files.map((entry) => entry.path);
 
     expect(packedPaths).toContain("dist/index.js");

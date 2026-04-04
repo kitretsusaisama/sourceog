@@ -102,8 +102,11 @@ describe("Property 9: CanonicalRenderContext Shape", () => {
             // Extract the JSON from the script tag
             const match = script.match(/window\.__SOURCEOG_CLIENT_CONTEXT__=(\{.*?\});/s);
             expect(match).not.toBeNull();
+            if (!match) {
+              throw new Error("Expected script match for SOURCEOG_CLIENT_CONTEXT");
+            }
 
-            const parsed = JSON.parse(match![1]!);
+            const parsed = JSON.parse(match[1]);
 
             // Req 5.5: all required fields must be present
             for (const field of REQUIRED_FIELDS) {
@@ -194,7 +197,12 @@ describe("Property 9: CanonicalRenderContext Shape", () => {
 
           const scriptIntercepted = buildBootstrapScript(contextIntercepted);
           const matchIntercepted = scriptIntercepted.match(/window\.__SOURCEOG_CLIENT_CONTEXT__=(\{.*?\});/s);
-          const parsedIntercepted = JSON.parse(matchIntercepted![1]!);
+
+          if (!matchIntercepted || !matchIntercepted[1]) {
+            throw new Error("Expected __SOURCEOG_CLIENT_CONTEXT__ in scriptIntercepted");
+          }
+
+          const parsedIntercepted = JSON.parse(matchIntercepted[1]);
 
           // Req 5.2: interceptedFrom must be present when intercepted=true
           expect(parsedIntercepted.intercepted).toBe(true);

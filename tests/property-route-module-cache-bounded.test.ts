@@ -39,7 +39,11 @@ function createLruCache() {
   ): Promise<unknown> {
     // Req 8.3: return cached error without re-attempting import
     if (routeModuleErrorCache.has(file)) {
-      throw routeModuleErrorCache.get(file)!;
+      const cachedErr = routeModuleErrorCache.get(file);
+      if (cachedErr) {
+        throw cachedErr;
+      }
+      throw new Error(`Unexpected missing error for file: ${file}`);
     }
 
     if (routeModuleCache.has(file)) {
@@ -63,8 +67,10 @@ function createLruCache() {
 
     // Req 8.1: evict LRU entry when cache exceeds max size
     if (routeModuleCache.size > ROUTE_MODULE_CACHE_MAX) {
-      const lruKey = routeModuleCache.keys().next().value!;
-      routeModuleCache.delete(lruKey);
+      const lruKey = routeModuleCache.keys().next().value;
+      if (lruKey !== undefined) {
+        routeModuleCache.delete(lruKey);
+      }
     }
 
     return mod;
