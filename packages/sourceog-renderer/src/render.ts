@@ -64,11 +64,22 @@ interface RouteModuleLike {
   generateMetadata?: (context: SourceOGRequestContext) => Promise<Metadata> | Metadata;
 }
 
+/**
+ * Dynamically imports a module from the specified file path, applying inline transforms for TS, TSX, and JSX files if needed.
+ * @param filePath The file path of the module to import.
+ * @returns A Promise resolving to the imported module of type T.
+ */
 function importModule<T>(filePath: string): Promise<T> {
   const useInlineTransform = filePath.endsWith(".ts") || filePath.endsWith(".tsx") || filePath.endsWith(".jsx");
   return loadModule(pathToFileURL(filePath).href, useInlineTransform) as Promise<T>;
 }
 
+/**
+ * Loads the modules for a given route including page, layout, and template modules and merges their metadata.
+ * @param route The route definition to load modules for.
+ * @param context The request context for generating metadata.
+ * @returns An object containing the loaded pageModule, layoutModules, optional templateModule, and merged metadata.
+ */
 async function loadRouteModules(
   route: RouteDefinition,
   context: SourceOGRequestContext,
@@ -104,6 +115,11 @@ async function loadRouteModules(
   };
 }
 
+/**
+ * Builds the render tree and collects render segments for a given route.
+ * @param route The route definition to build the render tree for.
+ * @returns An object containing the renderedSegments array and the server-side render tree root node.
+ */
 function buildRenderTree(route: RouteDefinition): {
   renderedSegments: FlightRenderSegment[];
   serverTree: FlightRenderTreeNode;
@@ -185,6 +201,13 @@ function buildRenderTree(route: RouteDefinition): {
   return { renderedSegments, serverTree: root };
 }
 
+/**
+ * Recursively attaches boundary IDs to each node of a flight render tree.
+ *
+ * @param tree - The current FlightRenderTreeNode to process.
+ * @param boundaryRefs - Array of ClientBoundaryDescriptor providing boundary IDs.
+ * @returns Updated FlightRenderTreeNode with boundaryIds assigned.
+ */
 function attachBoundaryIds(
   tree: FlightRenderTreeNode,
   boundaryRefs: ClientBoundaryDescriptor[],
@@ -201,6 +224,18 @@ function attachBoundaryIds(
   };
 }
 
+/**
+ * Builds a React element tree by applying the page component, optional template component,
+ * and a series of layout components in reverse order.
+ *
+ * @param route - The route definition for which the element tree is built.
+ * @param modules - An object containing the page module, an array of layout modules,
+ *   and an optional template module.
+ * @param context - The request context providing params and query data.
+ * @param parallelSlotElements - Optional mapping of parallel slot names to React elements
+ *   to be included in layout components.
+ * @returns The constructed React.ReactElement representing the assembled component tree.
+ */
 function buildElementTree(
   route: RouteDefinition,
   modules: {
@@ -242,11 +277,24 @@ function buildElementTree(
   return element;
 }
 
+/**
+ * Resolves the appropriate render mode for a route based on client assets settings.
+ *
+ * @param clientAssets - Optional document client assets containing renderMode and hydrationMode.
+ * @returns The determined route render mode, either from clientAssets.renderMode or derived from hydrationMode.
+ */
 function resolveRenderMode(clientAssets?: DocumentClientAssets): RouteRenderMode {
   return clientAssets?.renderMode
     ?? (clientAssets?.hydrationMode === "full-route" ? "client-root" : "server-components");
 }
 
+/**
+ * Computes a canonical route ID based on the route pattern and parameters.
+ *
+ * @param routePattern - The route pattern string.
+ * @param params - A record of parameter names to their values.
+ * @returns The first 12 characters of the SHA-256 hash of the route pattern and sorted parameters.
+ */
 export function computeCanonicalRouteId(
   routePattern: string,
   params: Record<string, string>,
@@ -263,6 +311,14 @@ export function computeCanonicalRouteId(
     .slice(0, 12);
 }
 
+/**
+ * Computes a unique render context key for a given route, slot, and interception status.
+ *
+ * @param canonicalRouteId - The canonical identifier for the route.
+ * @param slotId - The identifier for the slot.
+ * @param intercepted - A boolean indicating if the route is intercepted.
+ * @returns A 16-character hexadecimal string representing the render context key.
+ */
 export function computeRenderContextKey(
   canonicalRouteId: string,
   slotId: string,
@@ -274,6 +330,14 @@ export function computeRenderContextKey(
     .slice(0, 16);
 }
 
+/code/438951ed-cb87-42ed-836d-bdeb3a3ed217/new_code/packages/sourceog-renderer/src/render.ts
+
+/**
+ * Creates flight manifest references based on the provided client assets.
+ *
+ * @param clientAssets - Optional document client assets containing various hrefs and entries.
+ * @returns FlightManifestRefs object containing runtime, route, metadata, entry, shared chunk, boundary asset hrefs, and action IDs.
+ */
 function createFlightManifestRefs(clientAssets?: DocumentClientAssets): FlightManifestRefs {
   return {
     runtimeHref: clientAssets?.runtimeHref,
@@ -288,6 +352,12 @@ function createFlightManifestRefs(clientAssets?: DocumentClientAssets): FlightMa
   };
 }
 
+/**
+ * Escapes special characters in a string for safe use in HTML attributes.
+ *
+ * @param value The string to escape.
+ * @returns The escaped string with HTML entities for &, \", and >.
+ */
 export function escapeHtmlAttr(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -295,6 +365,12 @@ export function escapeHtmlAttr(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+/**
+ * Escapes special sequences in script content to prevent closing tags or comment injections.
+ *
+ * @param value - The script content string to escape.
+ * @returns The escaped script content string.
+ */
 export function escapeScriptContent(value: string): string {
   return value
     .replaceAll("</", "<\\/")
@@ -302,6 +378,13 @@ export function escapeScriptContent(value: string): string {
     .replaceAll("-->", "--\\>");
 }
 
+/**
+ * Creates a snapshot of the client route based on the rendered result and optional client assets.
+ *
+ * @param rendered - The rendered result containing route and render details.
+ * @param clientAssets - Optional client-specific assets like hrefs and hydration mode.
+ * @returns The client route snapshot including HTML, assets, metadata, and render context.
+ */
 function createClientRouteSnapshot(
   rendered: CanonicalRenderResult,
   clientAssets?: DocumentClientAssets,
@@ -342,6 +425,12 @@ function createClientRouteSnapshot(
   };
 }
 
+/**
+ * Renders HTML link tags for preloading client assets.
+ *
+ * @param clientAssets - The client assets to render links for.
+ * @returns A string containing HTML link tags for modulepreload and fetch preloads.
+ */
 function renderClientAssetHead(clientAssets?: DocumentClientAssets): string {
   if (!clientAssets) {
     return "";
@@ -387,6 +476,13 @@ function renderClientAssetHead(clientAssets?: DocumentClientAssets): string {
   ].join("");
 }
 
+/**
+ * Renders a script tag to initialize the client context for hydration.
+ *
+ * @param rendered - The canonical render result containing route and render information.
+ * @param clientAssets - Optional document client assets used to create the client context; if not provided, the function returns an empty string.
+ * @returns A string containing a script tag that sets window.__SOURCEOG_INITIAL_RENDER_SNAPSHOT__, window.__SOURCEOG_LAST_RENDER_SNAPSHOT__, and window.__SOURCEOG_CLIENT_CONTEXT__; or an empty string if clientAssets is not provided.
+ */
 function renderClientContextScript(rendered: CanonicalRenderResult, clientAssets?: DocumentClientAssets): string {
   if (!clientAssets) {
     return "";
@@ -426,7 +522,15 @@ function renderClientContextScript(rendered: CanonicalRenderResult, clientAssets
   return `<script>window.__SOURCEOG_INITIAL_RENDER_SNAPSHOT__=${escapeScriptContent(JSON.stringify(snapshot))};window.__SOURCEOG_LAST_RENDER_SNAPSHOT__=window.__SOURCEOG_INITIAL_RENDER_SNAPSHOT__;window.__SOURCEOG_CLIENT_CONTEXT__=${escapeScriptContent(JSON.stringify(clientContext))};${rendered.routeId ? `document.documentElement.dataset.sourceogRoute=${JSON.stringify(rendered.routeId)};` : ""}</script>`;
 }
 
-export function createDocumentHtml(
+export /**
+ * Creates the full HTML document string for SSR output.
+ *
+ * @param {CanonicalRenderResult} rendered - The result of server-side rendering containing HTML parts and payloads.
+ * @param {string} [locale] - Optional locale for setting the lang attribute in the HTML tag.
+ * @param {Object} [options] - Optional settings including client assets.
+ * @param {DocumentClientAssets} [options.clientAssets] - Client assets for including scripts and styles.
+ * @returns {string} The complete HTML string of the document.
+ */ function createDocumentHtml(
   rendered: CanonicalRenderResult,
   locale?: string,
   options?: {
@@ -469,7 +573,19 @@ export function createDocumentHtml(
   return `<!DOCTYPE html><html lang="${escapeHtmlAttr(locale ?? "en")}"><head><meta charSet="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />${headMarkup}</head><body><div id="sourceog-root">${rendered.bodyHtml}</div>${bodyScripts}</body></html>`;
 }
 
-export async function renderRouteToCanonicalResult(
+export /**
+ * Renders the specified route to a canonical render result.
+ *
+ * @param {RouteDefinition} route - The definition of the route to render.
+ * @param {SourceOGRequestContext} context - The request context containing params and query.
+ * @param {RenderRouteOptions & { pathname?: string; clientAssets?: DocumentClientAssets; clientReferenceManifest?: ClientReferenceManifest; clientReferenceDistRoot?: string; routeIdentity?: RouteRenderIdentityInput; }} [options] - Options for rendering including client assets and route identity.
+ * @param {string} [options.pathname] - Optional pathname to use during rendering.
+ * @param {DocumentClientAssets} [options.clientAssets] - Optional client assets for including in rendering.
+ * @param {ClientReferenceManifest} [options.clientReferenceManifest] - Optional manifest for client references.
+ * @param {string} [options.clientReferenceDistRoot] - Optional root path for client reference distribution.
+ * @param {RouteRenderIdentityInput} [options.routeIdentity] - Optional identity input for route rendering.
+ * @returns {Promise<RenderRouteResult>} A promise that resolves to the render result.
+ */ async function renderRouteToCanonicalResult(
   route: RouteDefinition,
   context: SourceOGRequestContext,
   options: RenderRouteOptions & {
@@ -541,6 +657,14 @@ export async function renderRouteToCanonicalResult(
   };
 }
 
+/**
+ * Renders a route to a Flight payload.
+ *
+ * @param route - The route definition to render.
+ * @param context - The request context for rendering.
+ * @param options - Optional rendering options.
+ * @returns A promise that resolves to a client route snapshot.
+ */
 export async function renderRouteToFlightPayload(
   route: RouteDefinition,
   context: SourceOGRequestContext,
@@ -551,12 +675,26 @@ export async function renderRouteToFlightPayload(
   return createClientRouteSnapshot(rendered, normalizedOptions?.clientAssets);
 }
 
+/**
+ * Creates two identical ReadableStream duplicates from an existing stream.
+ *
+ * @param stream The ReadableStream<Uint8Array> to duplicate.
+ * @returns An array containing two ReadableStream<Uint8Array> instances that read the same data.
+ */
 export function teeReadableStream(
   stream: ReadableStream<Uint8Array>,
 ): [ReadableStream<Uint8Array>, ReadableStream<Uint8Array>] {
   return stream.tee();
 }
 
+/**
+ * Renders the given route as a flight stream.
+ *
+ * @param route The route definition to render.
+ * @param context The source request context for rendering.
+ * @param options Rendering options to customize the flight stream.
+ * @returns A ReadableStream that emits Uint8Array chunks of the rendered route.
+ */
 export async function renderRouteToFlightStream(
   route: RouteDefinition,
   context: SourceOGRequestContext,
@@ -575,6 +713,14 @@ export async function renderRouteToFlightStream(
   });
 }
 
+/**
+ * Renders a route to a HTTP response by generating the canonical result and wrapping it in an HTML response.
+ *
+ * @param route The definition of the route to render.
+ * @param context The Source OG request context used during rendering.
+ * @param options Additional rendering options, including pathname, client assets, and route identity.
+ * @returns A promise that resolves to a Source OG formatted HTTP response.
+ */
 export async function renderRouteToResponse(
   route: RouteDefinition,
   context: SourceOGRequestContext,
@@ -595,6 +741,14 @@ export async function renderRouteToResponse(
   });
 }
 
+/**
+ * Renders an error page for SourceOG requests.
+ *
+ * @param _errorFile - The path to an optional error file (unused).
+ * @param context - The OG request context containing request details.
+ * @param error - The Error object containing the error message.
+ * @returns A SourceOGResponse containing the HTML for the error page with status code 500.
+ */
 export async function renderError(
   _errorFile: string | undefined,
   context: SourceOGRequestContext,
@@ -605,6 +759,13 @@ export async function renderError(
     { status: 500 },
   );
 }
+/**
+ * Generates a 404 Not Found response with an HTML page displaying the requested path.
+ *
+ * @param _notFoundFile - Optional path to a custom Not Found file (currently unused).
+ * @param context - The source OG request context.
+ * @returns A Promise resolving to a SourceOGResponse containing the HTML content and 404 status.
+ */
 export async function renderNotFound(
   _notFoundFile: string | undefined,
   context: SourceOGRequestContext,
@@ -615,6 +776,12 @@ export async function renderNotFound(
   );
 }
 
+/**
+ * Streams a server components response for testing.
+ * @param rendered The canonical render result to convert to HTML.
+ * @param clientAssets Optional document client assets for rendering.
+ * @returns A PassThrough stream containing the rendered HTML document.
+ */
 export async function streamServerComponentsResponseForTest(
   rendered: CanonicalRenderResult,
   clientAssets?: DocumentClientAssets,
@@ -627,10 +794,22 @@ export async function streamServerComponentsResponseForTest(
 
 export const renderRoute = renderRouteToResponse;
 
+/**
+ * Converts a web ReadableStream of Uint8Array into a Node.js Readable stream.
+ *
+ * @param stream - The web ReadableStream of Uint8Array data.
+ * @returns A Node.js Readable stream representing the provided web stream.
+ */
 export function toNodeReadable(stream: ReadableStream<Uint8Array>): Readable {
   return Readable.fromWeb(stream);
 }
 
+/**
+ * Creates a SourceOGError representing a render failure.
+ * @param message The error message describing the failure.
+ * @param details Optional additional context or details about the error.
+ * @returns A SourceOGError with the RENDER_FAILED error code.
+ */
 export function createRenderFailure(message: string, details?: Record<string, unknown>): SourceOGError {
   return new SourceOGError(SOURCEOG_ERROR_CODES.RENDER_FAILED, message, details);
 }

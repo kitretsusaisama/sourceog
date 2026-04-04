@@ -432,6 +432,18 @@ export class WorkerPool {
     this.shuttingDown = false;
   }
 
+  /**
+   * Retrieves statistics about the worker pool.
+   *
+   * @returns An object containing:
+   *   - workerCount: number of workers.
+   *   - busyWorkers: number of busy workers.
+   *   - idleWorkers: number of idle workers.
+   *   - queuedRequests: number of queued requests.
+   *   - requestCounts: number of requests each worker has processed.
+   *   - workerThreadIds: thread IDs of each worker.
+   *   - maxQueueDepth: the maximum queue depth.
+   */
   public getStats(): {
     workerCount: number;
     busyWorkers: number;

@@ -30,6 +30,11 @@ import { renderFlight } from '../rsc/compat-renderer.js';
 const lifecycle = new WorkerLifecycle();
 let clientManifest: NormalizedClientManifest;
 
+/**
+ * Initializes the worker router with the given message port.
+ *
+ * @param port - The MessagePort used for communication with the worker.
+ */
 export function initializeWorkerRouter(port: MessagePort): void {
   lifecycle.ready(port);
 }
@@ -41,6 +46,12 @@ export function initializeWorkerRouter(port: MessagePort): void {
 
 let renderMutex: Promise<unknown> = Promise.resolve();
 
+/**
+ * Ensures that render tasks are executed sequentially by queuing them through a mutex.
+ *
+ * @param task - The asynchronous render task to be executed.
+ * @returns A promise that resolves with the render task's result.
+ */
 async function withRenderMutex<T>(task: () => Promise<T>): Promise<T> {
   const resultPromise = renderMutex.then(task);
   renderMutex = resultPromise.catch(() => {}); // Prevent unhandled rejection chain breakage
@@ -182,6 +193,12 @@ async function handleRenderRequestImpl(
   }
 }
 
+/**
+ * Handles the shutdown procedure by initiating lifecycle shutdown and sending a shutdown acknowledgment.
+ *
+ * @param port The MessagePort used to communicate and send the shutdown acknowledgment.
+ * @returns A promise that resolves once the shutdown acknowledgment has been sent.
+ */
 async function handleShutdown(port: MessagePort): Promise<void> {
   lifecycle.shutdown();
   port.postMessage({ type: 'shutdown_ack' });

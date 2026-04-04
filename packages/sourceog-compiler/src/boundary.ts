@@ -55,6 +55,12 @@ export interface BoundaryAnalysisResult {
   diagnostics: DiagnosticIssue[];
 }
 
+/**
+ * Analyzes module boundaries based on the provided route manifest.
+ *
+ * @param manifest The route manifest containing pages and handlers to analyze.
+ * @returns A promise that resolves to a BoundaryAnalysisResult containing analyzed modules, client/server manifests, and diagnostics.
+ */
 export async function analyzeModuleBoundaries(manifest: RouteManifest): Promise<BoundaryAnalysisResult> {
   const ownership = new Map<string, RouteOwnership>();
   const parsedModules = new Map<string, ParsedModuleSource>();
@@ -282,6 +288,13 @@ function collectOwnedFiles(route: RouteManifest["pages"][number] | RouteManifest
   ].filter((value): value is string => Boolean(value));
 }
 
+
+/**
+ * Parses a module source file to extract directives, imports, resolved local and builtin imports, and exports.
+ *
+ * @param filePath - The path to the module source file.
+ * @returns A Promise that resolves to a ParsedModuleSource object containing metadata about the module.
+ */
 async function parseModuleSource(filePath: string): Promise<ParsedModuleSource> {
   const source = await fs.readFile(filePath, "utf8");
   const directiveState = parseDirectives(source);
@@ -306,6 +319,12 @@ async function parseModuleSource(filePath: string): Promise<ParsedModuleSource> 
   };
 }
 
+/**
+ * Parses module directives ('use-client' or 'use-server') from the source code.
+ *
+ * @param source - The source code string to parse for directives.
+ * @returns An object containing the detected module directive and whether there are conflicting directives.
+ */
 function parseDirectives(source: string): { directive: ModuleDirective; conflicting: boolean } {
   const directives = new Set<ModuleDirective>();
   const lines = source.split(/\r?\n/);
@@ -334,12 +353,18 @@ function parseDirectives(source: string): { directive: ModuleDirective; conflict
   return { directive, conflicting: false };
 }
 
+/**
+ * Parses the provided source code string and extracts unique import and export specifier paths.
+ *
+ * @param source The source code to parse for import and export specifiers.
+ * @returns An array of unique module specifier strings sorted alphabetically.
+ */
 function parseImportSpecifiers(source: string): string[] {
   const specifiers = new Set<string>();
   const patterns = [
-    /\bimport\s+[^'"]*?from\s+['"]([^'"]+)['"]/g,
-    /\bimport\s*['"]([^'"]+)['"]/g,
-    /\bexport\s+[^'"]*?from\s+['"]([^'"]+)['"]/g
+    /\bimport\s+[^'\"]*?from\s+['\"]([^'\"]+)['\"]/g,
+    /\bimport\s*['\"]([^'\"]+)['\"]/g,
+    /\bexport\s+[^'\"]*?from\s+['\"]([^'\"]+)['\"]/g
   ];
 
   for (const pattern of patterns) {
@@ -352,6 +377,12 @@ function parseImportSpecifiers(source: string): string[] {
   return [...specifiers].sort();
 }
 
+/**
+ * Parses the given source code and extracts names of exported actions.
+ *
+ * @param source - The source code to parse.
+ * @returns An array of exported action names sorted alphabetically.
+ */
 function parseActionExports(source: string): string[] {
   const exports = new Set<string>();
   const patterns = [
@@ -372,6 +403,12 @@ function parseActionExports(source: string): string[] {
   return [...exports].sort();
 }
 
+/**
+ * Parses the given source code to extract all exported members.
+ *
+ * @param source - The source code string to search for export statements.
+ * @returns An array of exported member names, sorted alphabetically.
+ */
 function parseClientExports(source: string): string[] {
   const exports = new Set<string>();
   const patterns = [
@@ -405,6 +442,13 @@ function parseClientExports(source: string): string[] {
   return [...exports].sort();
 }
 
+/**
+ * Resolves a local import specifier relative to the given file.
+ *
+ * @param fromFile - The path of the file from which to resolve the specifier.
+ * @param specifier - The module specifier to resolve.
+ * @returns The resolved file path if it exists; otherwise, null.
+ */
 async function resolveLocalImport(fromFile: string, specifier: string): Promise<string | null> {
   const base = path.resolve(path.dirname(fromFile), specifier);
   const candidates = [
@@ -435,6 +479,14 @@ async function resolveLocalImport(fromFile: string, specifier: string): Promise<
   return null;
 }
 
+/**
+ * Merges route ownership details for a given file path into the ownership map.
+ * @param ownership - Map of normalized file paths to their RouteOwnership.
+ * @param filePath - The file path to normalize and merge ownership for.
+ * @param routeId - Optional route identifier to add.
+ * @param pathname - Optional route pathname to add.
+ * @returns True if ownership was modified, false otherwise.
+ */
 function mergeOwnership(
   ownership: Map<string, RouteOwnership>,
   filePath: string,
@@ -457,6 +509,12 @@ function mergeOwnership(
   return existing.routeIds.size !== routeCount || existing.pathnames.size !== pathnameCount;
 }
 
+/**
+ * Generates a unique action ID based on file path and export name.
+ * @param filePath - The file path to normalize and hash.
+ * @param exportName - The name of the exported action.
+ * @returns A hexadecimal ID string of length 16.
+ */
 function createActionId(filePath: string, exportName: string): string {
   return createHash("sha256")
     .update(`${normalizePath(filePath)}:${exportName}`)
@@ -464,6 +522,11 @@ function createActionId(filePath: string, exportName: string): string {
     .slice(0, 16);
 }
 
+/**
+ * Generates a unique module ID based on file path.
+ * @param filePath - The file path to normalize and hash.
+ * @returns A hexadecimal ID string of length 16.
+ */
 function createModuleId(filePath: string): string {
   return createHash("sha256")
     .update(normalizePath(filePath))
@@ -471,6 +534,13 @@ function createModuleId(filePath: string): string {
     .slice(0, 16);
 }
 
+/**
+ * Generates a unique reference ID based on file path, kind, and optional export name.
+ * @param filePath - The file path to normalize and hash.
+ * @param kind - The reference kind, either "client" or "server".
+ * @param exportName - Optional exported name for the reference.
+ * @returns A hexadecimal ID string of length 16.
+ */
 function createReferenceId(filePath: string, kind: "client" | "server", exportName?: string): string {
   return createHash("sha256")
     .update(`${kind}:${normalizePath(filePath)}${exportName ? `#${exportName}` : ""}`)
@@ -478,6 +548,13 @@ function createReferenceId(filePath: string, kind: "client" | "server", exportNa
     .slice(0, 16);
 }
 
+/**
+ * Determines valid runtime targets ("node", "edge") for a set of routes and module capabilities.
+ * @param manifest - The route manifest containing pages and handlers.
+ * @param routeIds - Array of route identifiers to resolve.
+ * @param module - Optional module boundary data including directives and imports.
+ * @returns An array of runtime targets supported.
+ */
 function resolveRuntimeTargets(
   manifest: RouteManifest,
   routeIds: string[],
@@ -500,6 +577,11 @@ function resolveRuntimeTargets(
   return ["node", "edge"];
 }
 
+/**
+ * Normalizes file paths to use forward slashes and lowercase.
+ * @param filePath - The original file path to normalize.
+ * @returns The normalized file path as a lowercase string with "/" separators.
+ */
 function normalizePath(filePath: string): string {
   return filePath.replaceAll("\\", "/").toLowerCase();
 }
@@ -647,6 +729,13 @@ export function enforceEdgeCapability(capability: RouteRuntimeCapability): void 
   );
 }
 
+/**
+ * Resolves a local import path for the Edge runtime by checking possible file extensions.
+ *
+ * @param fromFile The file from which to resolve the import.
+ * @param specifier The import specifier relative to fromFile.
+ * @returns The resolved file path if found, otherwise null.
+ */
 async function resolveLocalImportForEdge(fromFile: string, specifier: string): Promise<string | null> {
   const base = path.resolve(path.dirname(fromFile), specifier);
   const candidates = [
