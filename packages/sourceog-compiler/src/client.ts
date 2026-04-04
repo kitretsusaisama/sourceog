@@ -145,7 +145,7 @@ export async function writeClientArtifacts(
     const clientBoundaryModuleIds = createClientBoundaryModuleIds(route.file, clientBoundaryFiles);
     const actionEntries = actionEntriesByRoute.get(route.id) ?? [];
     const actionIds = actionEntries.map((entry) => entry.actionId);
-    const hydrationMode = resolveHydrationMode(route.file, clientBoundaryFiles);
+    const hydrationMode = resolveHydrationMode(route.file, clientBoundaryFiles, actionEntries.length);
     const renderMode = hydrationMode === "full-route" ? "client-root" : "server-components";
     let boundaryRefs = createClientBoundaryDescriptors(route.id, route.pathname, route.file, hydrationMode, clientBoundaryFiles);
 
@@ -562,7 +562,10 @@ function createClientBoundaryEntrySource(input: {
   sourceFile: string;
   boundaryRef: ClientBoundaryDescriptor;
 }): string {
-  const boundaryImportPath = toImportSpecifier(input.generatedEntryFile, input.boundaryRef.filePath);
+  const boundaryImportPath = toImportSpecifier(
+    input.generatedEntryFile,
+    input.boundaryRef.filePath ?? input.sourceFile,
+  );
 
   return [
     `import React from "react";`,
@@ -840,7 +843,7 @@ function createClientBoundaryDescriptors(
     });
   }
 
-  return [...descriptors.values()].sort((left, right) => left.moduleId.localeCompare(right.moduleId));
+  return [...descriptors.values()].sort((left, right) => (left.moduleId ?? "").localeCompare(right.moduleId ?? ""));
 }
 
 function sanitizeBoundaryName(value: string): string {
@@ -873,13 +876,22 @@ function toRelativeModuleId(sourceFile: string, targetFile: string): string {
 
 function resolveHydrationMode(
   sourceFile: string,
-  clientBoundaryFiles: string[]
+  clientBoundaryFiles: string[],
+  actionEntryCount = 0
 ): ClientRouteEntry["hydrationMode"] {
   if (clientBoundaryFiles.length === 0) {
     return "none";
   }
 
   if (clientBoundaryFiles.some((filePath) => normalizePath(filePath) === normalizePath(sourceFile))) {
+    return "full-route";
+  }
+
+  // Routes that only rely on client interactivity and do not couple that
+  // interactivity to server actions can hydrate from the route root. This
+  // keeps the mixed-route path for action-linked islands like /about while
+  // preserving full-route hydration for playground-style verification routes.
+  if (actionEntryCount === 0) {
     return "full-route";
   }
 

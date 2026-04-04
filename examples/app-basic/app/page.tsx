@@ -1,5 +1,5 @@
 import React from "react";
-import { Image } from "sourceog";
+import { Image } from "sourceog/image";
 
 export const metadata = {
   title: "SourceOG Home",

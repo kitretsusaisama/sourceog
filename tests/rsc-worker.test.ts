@@ -9,7 +9,7 @@ import {
   normalizeClientManifest,
   toError,
   type ClientManifestRecord,
-} from '../sourceog-renderer/src/rsc-worker-utils';
+} from "@sourceog/renderer";
 
 // Test fixtures
 const testManifestPath = path.join(process.cwd(), '.tmp-tests', 'test-manifest.json');

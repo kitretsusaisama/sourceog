@@ -1,0 +1,27 @@
+{
+  "name": "@sourceog/genbook",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./errors": "./dist/errors/index.js",
+    "./policy": "./dist/policy/index.js",
+    "./graph": "./dist/graph/index.js",
+    "./optimistic": "./dist/optimistic/index.js",
+    "./resilience": "./dist/resilience/index.js",
+    "./observability": "./dist/observability/index.js",
+    "./types": "./dist/types/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "ts-node": "^10.0.0"
+  }
+}

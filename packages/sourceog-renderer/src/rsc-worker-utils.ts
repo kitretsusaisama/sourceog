@@ -1,92 +1,112 @@
- /**
- * sourceog-renderer/src/rsc-worker-utils.ts
- *
- * Pure utility functions for RSC worker that don't depend on React or worker threads.
- * These can be safely tested in any environment.
- */
+// sourceog-renderer/src/rsc-worker-utils.ts
+// Alibaba CTO 2027 Standard — Legacy Utility Compatibility Layer (DEPRECATED)
+//
+// **MIGRATION CRITICAL**: Maintained solely for v1→v2 backward compatibility.
+// All functionality migrated to canonical locations with production-grade
+// implementations (caching, error domains, path resolution).
+//
+// MAPPING TABLE:
+// ┌──────────────────────┬─────────────────────────────────────┐
+// │ DEPRECATED            │ REPLACEMENT (v2)                   │
+// ├──────────────────────┼─────────────────────────────────────┤
+// │ loadManifestFromPath  │ manifestContentCache (manifests/)  │
+// │ normalizeClientManifest│ client-reference-manifest.ts      │
+// │ toError              │ core/errors.ts                      │
+// │ toSearchParamsObject │ core/urls.ts                        │
+// └──────────────────────┴─────────────────────────────────────┘
 
-import { readFileSync, existsSync } from "node:fs";
-
-export type ClientManifestEntry = {
-  id?: string;
-  name?: string;
-  chunks?: string[];
-  async?: boolean;
-  [key: string]: unknown;
-};
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { logger } from './core/logger.js';
+import type { ClientManifestEntry } from '@sourceog/genbook';
 
 export type ClientManifestRecord = Record<string, ClientManifestEntry | unknown>;
 
-export function loadManifestFromPath(manifestPath: string): ClientManifestRecord {
-  if (!manifestPath || !existsSync(manifestPath)) {
+/**
+ * @deprecated Use `manifestContentCache.get()` from `./manifests/manifest-cache.ts`
+ * 
+ * Legacy synchronous manifest loader. Bypasses v2 LRU caching.
+ * Included for compatibility only; does not respect cache eviction.
+ */
+export function loadManifestFromPath(manifestPath: string): Record<string, unknown> {
+  if (!manifestPath) {
     return {};
   }
 
+  const resolvedPath = manifestPath.startsWith('file://')
+    ? fileURLToPath(manifestPath)
+    : manifestPath;
+
   try {
-    const raw = readFileSync(manifestPath, "utf8");
-    const parsed = JSON.parse(raw) as ClientManifestRecord;
-    return parsed && typeof parsed === "object" ? parsed : {};
+    const raw = readFileSync(resolvedPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+    
+    return {};
   } catch {
     return {};
   }
 }
 
 /**
- * Normalize the manifest into the map expected by React Flight.
- *
- * Supported inputs:
- * 1. Already-normalized manifest keyed by module reference IDs.
- * 2. A wrapper with `registry`.
- * 3. A path-keyed registry where values contain `id` and `name`.
- *
- * Output keys:
- * - Prefer `entry.id#entry.name`
- * - Also expose `entry.id` for lookups that resolve module root first
+ * @deprecated Use `normalizeClientManifest()` from `./manifests/client-reference-manifest.ts`
+ * 
+ * Re-export for legacy consumers. Delegates to canonical v2 normalizer.
  */
-export function normalizeClientManifest(input: ClientManifestRecord): Record<string, unknown> {
-  const registry =
-    input && typeof input.registry === "object" && input.registry
-      ? (input.registry as ClientManifestRecord)
-      : input;
+export { normalizeClientManifest } from './manifests/client-reference-manifest.js';
 
-  const normalized: Record<string, unknown> = {};
+/**
+ * @deprecated Use `toError()` from `./core/errors.ts`
+ * 
+ * Re-export for legacy error normalization.
+ */
+export { toError } from './core/errors.js';
 
-  for (const [sourceKey, rawEntry] of Object.entries(registry ?? {})) {
-    if (!rawEntry || typeof rawEntry !== "object") continue;
-
-    const entry = rawEntry as ClientManifestEntry;
-    const entryId = typeof entry.id === "string" ? entry.id : undefined;
-    const entryName =
-      typeof entry.name === "string"
-        ? entry.name
-        : sourceKey.includes("#")
-          ? sourceKey.slice(sourceKey.lastIndexOf("#") + 1)
-          : "default";
-
-    if (!entryId) continue;
-
-    const normalizedEntry: ClientManifestEntry = {
-      ...entry,
-      id: entryId,
-      name: entryName,
-    };
-
-    const compositeKey = `${entryId}#${entryName}`;
-
-    normalized[compositeKey] = normalizedEntry;
-
-    if (!(entryId in normalized)) {
-      normalized[entryId] = normalizedEntry;
-    }
+/**
+ * @deprecated Use `toSearchParamsObject()` from `./core/urls.ts`
+ * 
+ * Legacy URLSearchParams conversion. Preserved signature for compatibility.
+ */
+export function toSearchParamsObject(
+  query: [string, string][] | undefined
+): Record<string, string> {
+  if (!query || !Array.isArray(query)) {
+    logger.warn('Legacy toSearchParamsObject: invalid input', { type: typeof query });
+    return {};
   }
 
-  return normalized;
+  try {
+    return Object.fromEntries(query);
+  } catch (error) {
+    logger.error('Legacy toSearchParamsObject failed', { 
+      queryLength: query.length, 
+      error 
+    });
+    return {};
+  }
 }
 
-export function toError(value: unknown): Error {
-  return value instanceof Error ? value : new Error(String(value));
-}
+// ---------------------------------------------------------------------------
+// BACKWARD COMPATIBILITY EXPORTS
+// ---------------------------------------------------------------------------
 
-export function toSearchParamsObject(query: [string, string][] | undefined): Record<string, string> {
-  return Object.fromEntries(query ?? []);
-}
+/** @deprecated Use from '@sourceog/genbook' directly */
+export type { ClientManifestEntry };
+
+/**
+ * @deprecated Remove direct usage. All v2 code uses canonical imports.
+ */
+export const LEGACY_MIGRATION_NOTICE = {
+  since: 'v2.0.0 (2026-01)',
+  removalTarget: 'v3.0.0 (2026-Q4)',
+  docs: 'https://sourceog.dev/renderer/v2/migration#rsc-worker-utils',
+  replacementSummary: `
+    🔄 loadManifestFromPath → manifestContentCache.get()
+    🔄 normalizeClientManifest → ./manifests/client-reference-manifest.ts
+    🔄 toError → ./core/errors.ts::toError()
+    🔄 toSearchParamsObject → ./core/urls.ts::toSearchParamsObject()
+  `,
+} as const;

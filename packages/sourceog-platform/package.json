@@ -1,6 +1,7 @@
 {
   "name": "@sourceog/platform",
   "version": "0.1.0",
+  "private": true,
   "description": "Configuration resolution, metadata types, and HTML head rendering for SourceOG",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -8,9 +9,9 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     }
   },
   "files": ["dist"],
@@ -20,7 +21,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sourceog/router": "workspace:*"
+    "@sourceog/router": "workspace:*",
+    "@sourceog/runtime": "workspace:*",
+    "jose": "^5.9.6",
+    "react": "^19.1.1",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

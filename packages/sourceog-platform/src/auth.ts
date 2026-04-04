@@ -1,5 +1,4 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { SignJWT, jwtVerify } from "jose";
 
 export interface SessionPayload {
   sub: string;
@@ -55,43 +54,82 @@ export function verifySession(token: string, secret: string): SessionPayload | n
 }
 
 // ---------------------------------------------------------------------------
-// JWT helpers (jose-based, edge-runtime compatible)
+// JWT helpers (native HS256 implementation)
 // ---------------------------------------------------------------------------
 
 export type JWTPayload = Record<string, unknown>;
 
-/**
- * Signs a payload as a HS256 JWT using the `jose` library.
- */
-export async function createJWT(payload: JWTPayload, secret: string): Promise<string> {
-  const key = new TextEncoder().encode(secret);
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: "HS256" })
-    .sign(key);
+function encodeBase64UrlJson(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function decodeBase64UrlJson(value: string): unknown {
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+}
+
+function signJwtSegments(headerB64: string, payloadB64: string, secret: string): string {
+  return createHmac("sha256", secret)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest("base64url");
 }
 
 /**
- * Verifies a JWT signed with HS256.
+ * Signs a payload as a compact HS256 JWT.
+ */
+export async function createJWT(payload: JWTPayload, secret: string): Promise<string> {
+  const headerB64 = encodeBase64UrlJson({ alg: "HS256", typ: "JWT" });
+  const payloadB64 = encodeBase64UrlJson(payload);
+  const signatureB64 = signJwtSegments(headerB64, payloadB64, secret);
+  return `${headerB64}.${payloadB64}.${signatureB64}`;
+}
+
+/**
+ * Verifies a compact JWT signed with HS256.
  * Returns the payload on success, or `null` for invalid signature, expiry, or alg:none.
  */
 export async function verifyJWT(token: string, secret: string): Promise<JWTPayload | null> {
-  // Explicitly reject alg:none before touching jose
+  const segments = token.split(".");
+  if (segments.length !== 3) {
+    return null;
+  }
+
+  const [headerB64, payloadB64, signatureB64] = segments;
+  if (!headerB64 || !payloadB64 || !signatureB64) {
+    return null;
+  }
+
   try {
-    const [headerB64] = token.split(".");
-    if (!headerB64) return null;
-    const headerJson = Buffer.from(headerB64, "base64url").toString("utf8");
-    const header = JSON.parse(headerJson) as Record<string, unknown>;
+    const header = decodeBase64UrlJson(headerB64) as Record<string, unknown>;
     if (header.alg === "none") return null;
+    if (header.alg !== "HS256") return null;
   } catch {
     return null;
   }
 
   try {
-    const key = new TextEncoder().encode(secret);
-    const { payload } = await jwtVerify(token, key, { algorithms: ["HS256"] });
-    // Strip jose-internal registered claims from the returned payload
-    const { iss, sub, aud, exp, nbf, iat, jti, ...rest } = payload;
-    void iss; void sub; void aud; void exp; void nbf; void iat; void jti;
+    const expectedSignature = Buffer.from(signJwtSegments(headerB64, payloadB64, secret), "base64url");
+    const providedSignature = Buffer.from(signatureB64, "base64url");
+    if (
+      expectedSignature.length !== providedSignature.length ||
+      !timingSafeEqual(expectedSignature, providedSignature)
+    ) {
+      return null;
+    }
+
+    const payload = decodeBase64UrlJson(payloadB64) as Record<string, unknown>;
+    const exp = payload.exp;
+    if (typeof exp === "number" && Number.isFinite(exp) && exp * 1000 <= Date.now()) {
+      return null;
+    }
+
+    const { iss, sub, aud, nbf, iat, jti, exp: _exp, ...rest } = payload;
+    void iss;
+    void sub;
+    void aud;
+    void nbf;
+    void iat;
+    void jti;
+    void _exp;
     return rest as JWTPayload;
   } catch {
     return null;

@@ -1,416 +1,241 @@
-/**
- * sourceog-renderer/src/transpiler/worker-bootstrap.ts
- * 
- * Alibaba CTO 2027 Standard: Self-contained worker bootstrap with
- * embedded transpilation — NO external loader dependencies.
- * 
- * This file is designed to be copied/bundled into worker entry points
- * and handles ALL transpilation internally, making workers portable
- * across environments without --import flags.
- */
+// sourceog-renderer/src/transpiler/worker-bootstrap.ts
+// Alibaba CTO 2027 Standard — Worker Module Loader & Inline Transform
 
-import { readFileSync, existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync, rmdirSync } from "node:fs";
-import { createRequire } from "node:module";
-import path from "node:path";
-import { pathToFileURL, fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
-import { createHash } from "node:crypto";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { 
+  NoTranspilerError, 
+  TransformStrategyError, 
+  ModuleLoadError 
+} from '@sourceog/genbook/errors';
+import { isProduction } from '@sourceog/genbook';
+import { logger } from '../core/logger.js';
 
 // ---------------------------------------------------------------------------
-// Lightweight inline transpiler — embedded esbuild-wasm alternative
+// Types & Constants
 // ---------------------------------------------------------------------------
 
-/**
- * Minimal TypeScript/JSX transformer using regex-based approach.
- * NOT a full parser — handles 95% of common patterns.
- * Falls back to esbuild/sucrase if available.
- * 
- * For production, always use pre-compiled .js files.
- */
-class MinimalTransformer {
-  private tsTransforms: Array<[RegExp, string]> = [
-    // Remove type annotations: let x: string = ...
-    [/:\s*(?:string|number|boolean|void|null|undefined|any|unknown|never|object|symbol|bigint)\b(?=\s*[=,);\n])/g, ''],
-    // Remove interface declarations
-    [/^\s*interface\s+\w+\s*\{[^}]*\}/gm, ''],
-    // Remove type declarations
-    [/^\s*type\s+\w+\s*=[^;]+;/gm, ''],
-    // Remove import type
-    [/^\s*import\s+type\s+\{[^}]+\}\s+from\s+['"][^'"]+['"];?\s*$/gm, ''],
-    // Remove type-only exports
-    [/^\s*export\s+type\s+\{[^}]+\};?\s*$/gm, ''],
-    // Remove as Type assertions
-    [/\s+as\s+\w+(?:<[^>]+>)?\s*(?=[=,);\n])/g, ''],
-    // Remove generic type parameters from function calls (heuristic)
-    [/<\w+(?:\s*,\s*\w+)*>\s*\(/g, '('],
-    // Remove const enum declarations
-    [/^\s*const\s+enum\s+\w+\s*\{[^}]*\}/gm, ''],
-    // Remove readonly modifier
-    [/\breadonly\s+/g, ''],
-    // Remove parameter property modifiers
-    [/(?:public|private|protected)\s+/g, ''],
-    // Remove non-null assertion
-    [/\!/g, ''], // Note: over-aggressive but safe for most cases
-  ];
+type TransformFunction = (code: string, filename: string) => Promise<string>;
 
-  private jsxTransforms: Array<[RegExp, string | ((match: string, ...args: any[]) => string)]> = [
-    // Simple JSX to React.createElement (basic cases)
-    [/\<(\w+)(\s[^>]*)?\>/g, (match, tag, attrs) => {
-      const props = this.parseJsxAttrs(attrs);
-      return `React.createElement("${tag}", ${JSON.stringify(props)}, `;
-    }],
-    [/<\/(\w+)>/g, ')'],
-    // Self-closing tags
-    [/\<(\w+)(\s[^>]*)?\/\>/g, (match, tag, attrs) => {
-      const props = this.parseJsxAttrs(attrs);
-      return `React.createElement("${tag}", ${JSON.stringify(props)})`;
-    }],
-  ];
+const TRANSFORM_TMP_DIR = path.join(tmpdir(), 'sourceog-worker-transform');
 
-  private parseJsxAttrs(attrs: string | undefined): Record<string, unknown> {
-    if (!attrs) return {};
-    const props: Record<string, unknown> = {};
-    
-    // Very basic attr parsing — for full support, use esbuild
-    const attrRegex = /(\w+)=\{([^}]*)\}|(\w+)="([^"]*)"|(\w+)='([^']*)'/g;
-    let match;
-    
-    while ((match = attrRegex.exec(attrs)) !== null) {
-      const name = match[1] || match[3] || match[5];
-      const value = match[2] || match[4] || match[6];
-      if (name) {
-        props[name] = value;
-      }
-    }
-    
-    return props;
-  }
-
-  transform(code: string, filename: string): string {
-    // Apply TypeScript transforms
-    let result = code;
-    for (const [pattern, replacement] of this.tsTransforms) {
-      result = result.replace(pattern, replacement);
-    }
-
-    // Apply JSX transforms if needed
-    if (filename.endsWith(".tsx") || filename.endsWith(".jsx")) {
-      // Insert React import if not present
-      if (!result.includes("from \"react\"") && !result.includes("from 'react'")) {
-        result = `import React from "react";\n${result}`;
-      }
-      
-      for (const [pattern, replacement] of this.jsxTransforms) {
-        result = result.replace(pattern, replacement as string);
-      }
-    }
-
-    // Clean up empty lines and excessive whitespace
-    result = result.replace(/^\s*\n/gm, '\n');
-    
-    return result;
+// Ensure temp directory exists (idempotent)
+if (!existsSync(TRANSFORM_TMP_DIR)) {
+  try {
+    mkdirSync(TRANSFORM_TMP_DIR, { recursive: true });
+  } catch (e) {
+    // Critical failure: cannot prepare transform cache
+    logger.error('Failed to create transform temp directory', e);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Production artifact cache — pre-compiled .js files
+// Transform Strategy Resolvers (Lazy Loaded)
 // ---------------------------------------------------------------------------
 
-class ArtifactCache {
-  private cacheDir: string;
-  private enabled: boolean;
+let _esbuildTransform: TransformFunction | null = null;
+let _sucraseTransform: TransformFunction | null = null;
 
-  constructor() {
-    this.cacheDir = path.join(tmpdir(), "sourceog-transpiler-cache");
-    this.enabled = process.env.NODE_ENV === "production" || 
-                   process.env.SOURCEOG_DISABLE_ARTIFACT_CACHE !== "true";
-    
-    if (this.enabled && !existsSync(this.cacheDir)) {
-      try {
-        mkdirSync(this.cacheDir, { recursive: true });
-      } catch {
-        this.enabled = false;
-      }
-    }
+/**
+ * Attempts to load esbuild transform function.
+ */
+async function getEsbuildTransform(): Promise<TransformFunction | null> {
+  if (_esbuildTransform) return _esbuildTransform;
+  try {
+    const esbuild = await import('esbuild');
+    _esbuildTransform = async (code, filename) => {
+      const result = await esbuild.transform(code, {
+        loader: filename.endsWith('.tsx') ? 'tsx' : filename.endsWith('.jsx') ? 'jsx' : 'ts',
+        jsx: 'automatic',
+        jsxImportSource: 'react',
+        target: 'es2022',
+        format: 'esm',
+      });
+      return result.code;
+    };
+    return _esbuildTransform;
+  } catch {
+    return null;
   }
+}
 
-  get(filename: string, sourceHash: string): string | null {
-    if (!this.enabled) return null;
-    
-    const cachePath = this.getCachePath(filename, sourceHash);
-    if (!existsSync(cachePath)) return null;
-    
-    try {
-      return readFileSync(cachePath, "utf8");
-    } catch {
+/**
+ * Attempts to load sucrase transform function.
+ */
+async function getSucraseTransform(): Promise<TransformFunction | null> {
+  if (_sucraseTransform) return _sucraseTransform;
+  try {
+    const dynamicImport = new Function("specifier", "return import(specifier);") as (specifier: string) => Promise<unknown>;
+    const sucrase = await dynamicImport("sucrase").catch(() => null) as
+      | {
+          transform(code: string, options: {
+            transforms: string[];
+            jsxRuntime: string;
+            production: boolean;
+            filePath: string;
+          }): { code: string };
+        }
+      | null;
+    if (!sucrase) {
       return null;
     }
-  }
-
-  set(filename: string, sourceHash: string, code: string): void {
-    if (!this.enabled) return;
-    
-    const cachePath = this.getCachePath(filename, sourceHash);
-    try {
-      writeFileSync(cachePath, code, "utf8");
-    } catch {
-      // Ignore write failures
-    }
-  }
-
-  private getCachePath(filename: string, hash: string): string {
-    const safeFilename = filename
-      .replace(/[^a-zA-Z0-9._-]/g, "_")
-      .replace(/_+/g, "_");
-    return path.join(this.cacheDir, `${safeFilename}.${hash}.js`);
-  }
-
-  clear(): void {
-    if (!this.enabled) return;
-    try {
-      const { rmSync } = require("node:fs");
-      rmSync(this.cacheDir, { recursive: true, force: true });
-      mkdirSync(this.cacheDir, { recursive: true });
-    } catch {
-      // Ignore
-    }
-  }
-}
-
-
-// ---------------------------------------------------------------------------
-// Unified module loader
-// ---------------------------------------------------------------------------
-
-const minimalTransformer = new MinimalTransformer();
-const artifactCache = new ArtifactCache();
-
-// Try to load heavy transformers on demand
-let esbuildTransform: ((code: string, filename: string) => Promise<string>) | null = null;
-let sucraseTransform: ((code: string, filename: string) => Promise<string>) | null = null;
-
-async function ensureHeavyTransformers(): Promise<void> {
-  if (esbuildTransform || sucraseTransform) return;
-
-  // Try esbuild first (faster)
-  try {
-    const esbuild = await import("esbuild");
-    esbuildTransform = async (code: string, filename: string) => {
-      const result = await esbuild.transform(code, {
-        loader: filename.endsWith(".tsx") ? "tsx" : 
-                filename.endsWith(".jsx") ? "jsx" : "ts",
-        jsx: "automatic",
-        jsxImportSource: "react",
-        target: "es2022",
-        format: "esm",
-      });
-      return result.code;
-    };
-    return;
-  } catch {
-    // Fall through
-  }
-
-  // Try sucrase
-  try {
-    // @ts-expect-error - sucrase is an optional runtime dependency for inline transform
-    const sucrase = await import("sucrase");
-    sucraseTransform = async (code: string, filename: string) => {
-      const result = sucrase.transform(code, {
-        transforms: ["typescript", "jsx"],
-        jsxRuntime: "automatic",
-        production: process.env.NODE_ENV === "production",
+    _sucraseTransform = async (code, filename) => {
+      return sucrase.transform(code, {
+        transforms: ['typescript', 'jsx'],
+        jsxRuntime: 'automatic',
+        production: isProduction,
         filePath: filename,
-      });
-      return result.code;
+      }).code;
     };
-    return;
+    return _sucraseTransform;
   } catch {
-    // Fall through to minimal
+    return null;
   }
 }
 
-function computeHash(content: string): string {
-  return createHash("sha256").update(content).digest("hex").slice(0, 16);
-}
-
-// Cache directory for transformed modules (fixes relative import resolution)
-const TRANSFORM_TMP_DIR = path.join(tmpdir(), "sourceog-inline-transform");
-if (!existsSync(TRANSFORM_TMP_DIR)) {
-  mkdirSync(TRANSFORM_TMP_DIR, { recursive: true });
-}
+// ---------------------------------------------------------------------------
+// Public API: loadModule
+// ---------------------------------------------------------------------------
 
 /**
- * Load and transform a module if needed.
- * Returns the module exports.
+ * Loads a module inside a worker, handling inline transpilation if necessary.
+ * 
+ * @param specifier - The file path or URL to import.
+ * @param useInlineTransform - Whether to attempt transpilation for TS/TSX files.
+ * @returns The module exports.
  */
-export async function loadModule<T = unknown>(
+export async function loadModule(
   specifier: string,
-  options?: { forceTransform?: boolean }
-): Promise<T> {
-  const fsPath = specifier.startsWith("file://") 
-    ? fileURLToPath(specifier) 
-    : specifier;
+  useInlineTransform: boolean = false
+): Promise<unknown> {
+  let fsPath: string;
   
+  try {
+    fsPath = specifier.startsWith('file://') ? fileURLToPath(specifier) : specifier;
+  } catch {
+    // If it's not a file URL, it might be a bare specifier (e.g. 'react')
+    // We let it pass through to native import.
+    return import(specifier);
+  }
+
   const ext = path.extname(fsPath);
-  const needsTransform = 
-    options?.forceTransform ||
-    ext === ".tsx" || 
-    ext === ".ts" || 
-    ext === ".jsx";
 
-  if (!needsTransform) {
-    // Direct import for .js/.mjs files
-    const url = fsPath.startsWith("file://") ? fsPath : pathToFileURL(fsPath).href;
-    return import(url) as Promise<T>;
+  // 1. No transform needed for standard JS
+  if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+    return import(specifier.startsWith('file://') ? specifier : pathToFileURL(fsPath).href);
   }
 
-  // Read source
-  const source = readFileSync(fsPath, "utf8");
-  const sourceHash = computeHash(source);
-
-  // Check artifact cache (production)
-  const cached = artifactCache.get(fsPath, sourceHash);
-  if (cached) {
-    // Write to temp file to allow relative imports to resolve correctly
-    const tmpFile = path.join(TRANSFORM_TMP_DIR, `${path.basename(fsPath)}.${sourceHash}.mjs`);
-    if (!existsSync(tmpFile)) writeFileSync(tmpFile, cached, "utf8");
-    return import(pathToFileURL(tmpFile).href) as Promise<T>;
-  }
-
-  // Ensure heavy transformers are loaded
-  await ensureHeavyTransformers();
-
-  // Transform
-  let transformed: string;
+  // 2. Check if transform is needed/supported
+  const needsTransform = ext === '.tsx' || ext === '.ts' || ext === '.jsx';
   
-  if (esbuildTransform) {
-    transformed = await esbuildTransform(source, fsPath);
-  } else if (sucraseTransform) {
-    transformed = await sucraseTransform(source, fsPath);
-  } else {
-    // Fallback to minimal transformer
-    transformed = minimalTransformer.transform(source, fsPath);
-    console.warn(
-      `[SOURCEOG] Using minimal regex-based transformer for ${fsPath}. ` +
-      `Install esbuild or sucrase for full TypeScript/JSX support.`
+  if (!needsTransform) {
+    // Try native import for unknown extensions
+    return import(specifier.startsWith('file://') ? specifier : pathToFileURL(fsPath).href);
+  }
+
+  if (!useInlineTransform) {
+    // If not using inline transform, rely on native Node flags (already set in execArgv)
+    // But if we reach here and it's TSX, something is wrong or we should try native.
+    return import(specifier.startsWith('file://') ? specifier : pathToFileURL(fsPath).href);
+  }
+
+  // 3. Perform Inline Transform
+  return loadWithInlineTransform(fsPath, specifier);
+}
+
+// ---------------------------------------------------------------------------
+// Internal Implementation
+// ---------------------------------------------------------------------------
+
+/**
+ * Transforms source and loads from a temporary file to support relative imports.
+ */
+async function loadWithInlineTransform(fsPath: string, originalSpecifier: string): Promise<unknown> {
+  let source: string;
+  try {
+    source = readFileSync(fsPath, 'utf8');
+  } catch (e) {
+    throw new ModuleLoadError(originalSpecifier, fsPath, e);
+  }
+
+  const sourceHash = createHash('sha256').update(source).digest('hex').slice(0, 8);
+  
+  // Create a temp file path preserving the filename structure for debug
+  const tmpFile = path.join(
+    TRANSFORM_TMP_DIR, 
+    `${path.basename(fsPath).replace(/[^a-zA-Z0-9.]/g, '_')}-${sourceHash}.mjs`
+  );
+
+  // Check cache (file existence)
+  if (existsSync(tmpFile)) {
+    logger.debug(`Loading cached transform: ${tmpFile}`);
+    return import(pathToFileURL(tmpFile).href);
+  }
+
+  // Determine transformer
+  let transformFn = await getEsbuildTransform();
+  if (!transformFn) {
+    transformFn = await getSucraseTransform();
+  }
+
+  if (!transformFn) {
+    throw new NoTranspilerError(
+      path.extname(fsPath), 
+      ['esbuild', 'sucrase']
     );
   }
 
-  // Cache the transformed code
-  artifactCache.set(fsPath, sourceHash, transformed);
-
-  // FIX: Write to temp file instead of data URL to support relative imports
-  const tmpFile = path.join(TRANSFORM_TMP_DIR, `${path.basename(fsPath)}.${sourceHash}.mjs`);
-  if (!existsSync(tmpFile)) {
-    writeFileSync(tmpFile, transformed, "utf8");
-  }
-
-  return import(pathToFileURL(tmpFile).href) as Promise<T>;
-}
-
-
-/**
- * Check if a file needs transpilation.
- */
-export function needsTranspilation(specifier: string): boolean {
-  const fsPath = specifier.startsWith("file://") 
-    ? fileURLToPath(specifier) 
-    : specifier;
-  const ext = path.extname(fsPath);
-  return ext === ".tsx" || ext === ".ts" || ext === ".jsx";
-}
-
-/**
- * Get the execArgv needed for worker threads.
- * This is the LEGACY path — new code should use loadModule() directly.
- */
-export async function getWorkerExecArgv(): Promise<string[]> {
-  const baseArgs = ["--conditions=react-server"];
-
-  // Check for Node.js 22.6+ native support
-  const nodeMajor = parseInt(process.versions.node?.split(".")[0] ?? "0", 10);
-  if (nodeMajor >= 22) {
-    return [...baseArgs, "--experimental-transform-types"];
-  }
-
-  // Try to find tsx loader
-  const tsxLoader = await findTsxLoaderForWorker();
-  if (tsxLoader) {
-    return [...baseArgs, "--import", tsxLoader];
-  }
-
-  // No loader found — worker will use inline transform
-  return baseArgs;
-}
-
-async function findTsxLoaderForWorker(): Promise<string | null> {
-  // Strategy 1: import.meta.resolve
   try {
-    return import.meta.resolve("tsx/esm");
-  } catch {
-    // Fall through
+    logger.debug(`Transforming ${fsPath} -> ${tmpFile}`);
+    const transformedCode = await transformFn(source, fsPath);
+    writeFileSync(tmpFile, transformedCode, 'utf8');
+    return import(pathToFileURL(tmpFile).href);
+  } catch (err) {
+    // Wrap specific errors
+    if (err instanceof NoTranspilerError) throw err;
+    throw new TransformStrategyError('inline-transform', fsPath, err);
   }
-
-  // Strategy 2: Package discovery from multiple locations
-  const searchPaths = [
-    import.meta.url,
-    pathToFileURL(process.cwd()).href,
-  ];
-
-  // Walk up parent directories
-  let currentDir = process.cwd();
-  for (let i = 0; i < 5; i++) {
-    const parent = path.dirname(currentDir);
-    if (parent === currentDir) break;
-    searchPaths.push(pathToFileURL(parent).href);
-    currentDir = parent;
-  }
-
-  for (const fromUrl of searchPaths) {
-    try {
-      const req = createRequire(fromUrl);
-      const pkgPath = req.resolve("tsx/package.json");
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
-        exports?: Record<string, unknown>;
-      };
-      
-      const esmExport = pkg.exports?.["./esm"] as 
-        | { import?: string; default?: string }
-        | string
-        | undefined;
-      
-      let rel: string | undefined;
-      if (typeof esmExport === "string") rel = esmExport;
-      else if (typeof esmExport === "object") rel = esmExport?.import ?? esmExport?.default;
-      
-      if (rel) {
-        const resolved = path.join(path.dirname(pkgPath), rel);
-        if (existsSync(resolved)) {
-          return pathToFileURL(resolved).href;
-        }
-      }
-
-      // Fallback: probe known files
-      const tsxRoot = path.dirname(pkgPath);
-      for (const candidate of [
-        "dist/esm/index.cjs",
-        "dist/esm/index.js",
-        "dist/esm/loader.cjs",
-        "esm/index.js",
-      ]) {
-        const abs = path.join(tsxRoot, candidate);
-        if (existsSync(abs)) {
-          return pathToFileURL(abs).href;
-        }
-      }
-    } catch {
-      // Try next location
-    }
-  }
-
-  return null;
 }
 
-// Export for cleanup
-export { artifactCache };
+// ---------------------------------------------------------------------------
+// Utility: resolveImportSpecifier
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves an import specifier relative to a parent path.
+ */
+export function resolveImportSpecifier(specifier: string, parentPath: string): string {
+  if (!specifier || typeof specifier !== 'string') {
+    throw new TypeError(`Invalid import specifier: ${specifier}`);
+  }
+  
+  // Node built-ins or data URLs
+  if (specifier.startsWith('node:') || specifier.startsWith('data:') || specifier.startsWith('file://')) {
+    return specifier;
+  }
+  
+  if (path.isAbsolute(specifier)) {
+    return pathToFileURL(specifier).href;
+  }
+
+  // Relative specifier
+  if (specifier.startsWith('.')) {
+    const parentDir = path.dirname(parentPath);
+    const resolved = path.resolve(parentDir, specifier);
+    return pathToFileURL(resolved).href;
+  }
+
+  // Bare specifier - try to resolve via require
+  try {
+    const req = createRequire(parentPath);
+    const resolved = req.resolve(specifier);
+    return pathToFileURL(resolved).href;
+  } catch {
+    // Return as-is if cannot resolve (might be handled by loader)
+    return specifier;
+  }
+}

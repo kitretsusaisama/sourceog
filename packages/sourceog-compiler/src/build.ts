@@ -1,20 +1,26 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { AutomationEngine, createAutomationManifest, resolveConfig } from "@sourceog/platform";
-import { createDocumentHtml, renderRouteToCanonicalResult, renderRouteToFlightPayload, shutdownRscWorkerPool } from "@sourceog/renderer";
+import { createConsistencyGraphManifestFromRouteGraph, HeuristicControlPlane, RuleBasedAdaptiveTuner } from "@sourceog/genbook";
+import { renderRouteToCanonicalResult, renderRouteToFlightPayload, shutdownRscWorkerPool } from "@sourceog/renderer";
 import { matchPageRoute, scanRoutes } from "@sourceog/router";
 import {
   type ActionManifest,
   type AssetManifest,
+  type ArtifactSignatureManifest,
   type CacheManifest,
   type ClientBoundaryManifest,
   type ClientReferenceManifest,
+  createRuntimeFingerprint,
   createDiagnosticsEnvelope,
   createLogger,
   loadEnv,
   type DeploymentManifest,
+  type DeploymentSignatureManifest,
+  type DoctorBaselineManifest,
+  type GovernanceAuditManifest,
   SourceOGError,
   SOURCEOG_ERROR_CODES,
   SOURCEOG_MANIFEST_VERSION,
@@ -24,6 +30,7 @@ import {
   type BundleManifest,
   type RscReferenceManifest,
   type DiagnosticIssue,
+  type PolicyReplayManifest,
   type RenderManifest,
   type RouteGraphManifest,
   type RouteOwnershipManifest,
@@ -44,6 +51,7 @@ import {
   createRouteGraphManifest,
   createRouteOwnershipManifest
 } from "./manifests.js";
+import { writeReleaseEvidenceIndex } from "./evidence.js";
 
 interface PrerenderRecord {
   routeId: string;
@@ -65,6 +73,34 @@ export interface BuildResult {
   prerendered: PrerenderRecord[];
   budgetReport: BudgetReport;
   manifestPaths: DeploymentManifest["manifests"];
+}
+
+async function loadPrerenderModule(filePath: string): Promise<Record<string, unknown>> {
+  const needsTransform = filePath.endsWith(".ts") || filePath.endsWith(".tsx") || filePath.endsWith(".jsx");
+  if (!needsTransform) {
+    return import(pathToFileURL(filePath).href) as Promise<Record<string, unknown>>;
+  }
+
+  const tmpFile = path.join(path.dirname(filePath), `.sourceog-prerender-${randomUUID()}.mjs`);
+
+  try {
+    const { build } = await import("esbuild");
+    await build({
+      absWorkingDir: path.dirname(filePath),
+      entryPoints: [filePath],
+      outfile: tmpFile,
+      bundle: true,
+      format: "esm",
+      jsx: "automatic",
+      jsxImportSource: "react",
+      packages: "external",
+      platform: "node",
+      target: "node22",
+    });
+    return await import(pathToFileURL(tmpFile).href);
+  } finally {
+    await fs.rm(tmpFile, { force: true }).catch(() => undefined);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -440,10 +476,20 @@ function enrichClientReferenceManifest(
   };
 
   for (const routeEntry of clientArtifacts.routeEntries) {
+    const browserEntryHref = routeEntry.browserEntryAsset
+      ? toClientAssetHref(distRoot, routeEntry.browserEntryAsset)
+      : undefined;
+
     appendChunkHref(
       routeEntry.sourceFile,
-      routeEntry.browserEntryAsset ? toClientAssetHref(distRoot, routeEntry.browserEntryAsset) : undefined
+      browserEntryHref
     );
+
+    if (routeEntry.hydrationMode === "full-route") {
+      for (const clientReferenceRef of routeEntry.clientReferenceRefs) {
+        appendChunkHref(clientReferenceRef.filePath, browserEntryHref);
+      }
+    }
 
     for (const boundaryRef of routeEntry.boundaryRefs) {
       appendChunkHref(
@@ -453,8 +499,47 @@ function enrichClientReferenceManifest(
     }
   }
 
+  const existingManifestKeys = new Set(manifest.entries.map((entry) => entry.manifestKey));
+  const syntheticEntries = clientArtifacts.routeEntries
+    .filter((routeEntry) => routeEntry.hydrationMode === "full-route")
+    .flatMap((routeEntry) => {
+      const normalizedFilePath = normalizeFilePath(routeEntry.sourceFile);
+      const manifestKey = `${normalizedFilePath}#default`;
+      if (existingManifestKeys.has(manifestKey)) {
+        return [];
+      }
+
+      const runtimeTargets = routeEntry.clientReferenceRefs.flatMap((entry) => entry.runtimeTargets);
+      const dedupedRuntimeTargets = [...new Set(runtimeTargets)].sort() as Array<"node" | "edge">;
+      const syntheticRuntimeTargets: Array<"node" | "edge"> = dedupedRuntimeTargets.length > 0
+        ? dedupedRuntimeTargets
+        : ["node", "edge"];
+
+      return [{
+        referenceId: createHash("sha256")
+          .update(`client:${normalizedFilePath}#default`)
+          .digest("hex")
+          .slice(0, 16),
+        moduleId: createHash("sha256")
+          .update(normalizedFilePath)
+          .digest("hex")
+          .slice(0, 16),
+        filePath: routeEntry.sourceFile,
+        manifestKey,
+        exportName: "default",
+        exports: ["default"],
+        chunks: [],
+        async: false,
+        routeIds: [routeEntry.routeId],
+        pathnames: [routeEntry.pathname],
+        importSpecifiers: [],
+        directive: "use-client" as const,
+        runtimeTargets: syntheticRuntimeTargets
+      }];
+    });
+
   const registry: ClientReferenceManifest["registry"] = {};
-  const entries = manifest.entries.map((entry) => {
+  const entries = [...manifest.entries, ...syntheticEntries].map((entry) => {
     const chunks = [...(chunkHrefsByFile.get(normalizeFilePath(entry.filePath)) ?? new Set<string>())].sort();
     const registryEntry = manifest.registry[entry.manifestKey] ?? {
       id: entry.moduleId,
@@ -489,6 +574,193 @@ async function writeJsonAtomically(filePath: string, payload: unknown): Promise<
   await fs.writeFile(temporaryPath, JSON.stringify(payload, null, 2), "utf8");
   await fs.rm(filePath, { force: true });
   await fs.rename(temporaryPath, filePath);
+}
+
+async function hashFile(filePath: string): Promise<string> {
+  const content = await fs.readFile(filePath);
+  return createHash("sha256").update(content).digest("hex");
+}
+
+async function createArtifactSignatureManifest(input: {
+  buildId: string;
+  distRoot: string;
+  manifestPaths: Record<string, string>;
+}): Promise<ArtifactSignatureManifest> {
+  const artifacts = await Promise.all(
+    Object.entries(input.manifestPaths).map(async ([kind, filePath]) => {
+      const stat = await fs.stat(filePath);
+      return {
+        kind,
+        filePath,
+        sha256: await hashFile(filePath),
+        bytes: stat.size,
+      };
+    }),
+  );
+
+  const compiler = createHash("sha256")
+    .update(JSON.stringify(artifacts.filter((artifact) => artifact.kind !== "deploymentManifest")))
+    .digest("hex");
+  const runtime = createHash("sha256")
+    .update(JSON.stringify(artifacts.filter((artifact) => artifact.kind.includes("Manifest"))))
+    .digest("hex");
+  const deployment = createHash("sha256")
+    .update(JSON.stringify(artifacts))
+    .digest("hex");
+
+  return {
+    version: SOURCEOG_MANIFEST_VERSION,
+    buildId: input.buildId,
+    generatedAt: new Date().toISOString(),
+    signatures: {
+      compiler,
+      runtime,
+      deployment,
+    },
+    artifacts,
+  };
+}
+
+function createDeploymentSignatureManifest(input: {
+  buildId: string;
+  deploymentManifestPath: string;
+  artifactSignatureManifestPath: string;
+  deploymentManifest: DeploymentManifest;
+  artifactSignatureManifest: ArtifactSignatureManifest;
+  selectedAdapter: string;
+}): DeploymentSignatureManifest {
+  return {
+    version: SOURCEOG_MANIFEST_VERSION,
+    buildId: input.buildId,
+    generatedAt: new Date().toISOString(),
+    artifactSignatureManifestPath: input.artifactSignatureManifestPath,
+    deploymentManifestPath: input.deploymentManifestPath,
+    runtimeFingerprint: createRuntimeFingerprint(),
+    selectedAdapter: input.selectedAdapter,
+    routeCount: input.deploymentManifest.routes.length,
+    manifestCount: Object.keys(input.deploymentManifest.manifests).length,
+    signatures: {
+      ...input.artifactSignatureManifest.signatures,
+    },
+  };
+}
+
+function createGovernanceAuditManifest(input: {
+  buildId: string;
+  deploymentManifestPath: string;
+  deploymentManifest: DeploymentManifest;
+  routeGraphManifest: RouteGraphManifest;
+  routeOwnershipManifest: RouteOwnershipManifest;
+  cacheManifest: CacheManifest;
+  actionManifest: ActionManifest;
+  prerenderedCount: number;
+  artifactSignatureManifestPath: string;
+  deploymentSignatureManifestPath: string;
+  doctorBaselineManifestPath: string;
+  policyReplayManifestPath?: string;
+}): GovernanceAuditManifest {
+  return {
+    version: SOURCEOG_MANIFEST_VERSION,
+    buildId: input.buildId,
+    generatedAt: new Date().toISOString(),
+    packageContract: {
+      publicPackage: "sourceog",
+      internalPackagesRemainPrivate: true,
+    },
+    runtimeContract: {
+      artifactOnlyProduction: true,
+      sourceProbingDisallowed: true,
+      transpilerFallbackDisallowed: true,
+    },
+    laws: {
+      doctorLaw: true,
+      replayLaw: true,
+      policyLaw: true,
+      runtimeLaw: true,
+      governanceLaw: true,
+    },
+    decisions: {
+      routeCount: input.deploymentManifest.routes.length,
+      prerenderedRouteCount: input.prerenderedCount,
+      cacheEntryCount: input.cacheManifest.entries.length,
+      invalidationLinkCount: input.cacheManifest.invalidationLinks.length,
+      graphNodeCount: input.routeGraphManifest.nodes.length,
+      graphRouteCount: input.routeGraphManifest.routes.length,
+      ownershipEntryCount: input.routeOwnershipManifest.entries.length,
+      actionCount: input.actionManifest.entries.length,
+    },
+    artifactPaths: {
+      routeOwnershipManifest: input.deploymentManifest.manifests.routeOwnershipManifest,
+      cacheManifest: input.deploymentManifest.manifests.cacheManifest,
+      routeGraphManifest: input.deploymentManifest.manifests.routeGraphManifest,
+      artifactSignatureManifest: input.artifactSignatureManifestPath,
+      deploymentSignatureManifest: input.deploymentSignatureManifestPath,
+      doctorBaselineManifest: input.doctorBaselineManifestPath,
+      policyReplayManifest: input.policyReplayManifestPath,
+      deploymentManifest: input.deploymentManifestPath,
+    },
+  };
+}
+
+function createPolicyReplayManifest(input: {
+  buildId: string;
+  controlPlaneManifestPath: string;
+  tunerSnapshotManifestPath: string;
+  controlPlaneManifest: {
+    entries: Array<{
+      routeId: string;
+      pathname: string;
+      decision: {
+        strategy: string;
+        runtimeTarget: string;
+        queuePriority: string;
+        ttlSeconds: number | null;
+        reason: string;
+      };
+    }>;
+  };
+}): PolicyReplayManifest {
+  return {
+    version: SOURCEOG_MANIFEST_VERSION,
+    buildId: input.buildId,
+    generatedAt: new Date().toISOString(),
+    objective: "latency",
+    reducerPhases: [
+      "compatibility-constraints",
+      "static-route-policy",
+      "runtime-capability-constraints",
+      "loop-proposals",
+      "safety-envelope",
+      "emergency-override",
+    ],
+    loopNames: [
+      "RenderLoop",
+      "CacheLoop",
+      "WorkerLoop",
+      "GraphLoop",
+      "AssetLoop",
+      "IncidentLoop",
+      "PrefetchLoop",
+      "HydrationLoop",
+      "SecurityLoop",
+      "CanaryLoop",
+      "CostLoop",
+      "RegionalLoop",
+      "BudgetLoop",
+      "ErrorLoop",
+    ],
+    controlPlaneManifestPath: input.controlPlaneManifestPath,
+    tunerSnapshotManifestPath: input.tunerSnapshotManifestPath,
+    routeDecisions: input.controlPlaneManifest.entries.map((entry) => ({
+      routeId: entry.routeId,
+      pathname: entry.pathname,
+      strategy: entry.decision.strategy,
+      runtimeTarget: entry.decision.runtimeTarget,
+      queuePriority: entry.decision.queuePriority,
+      ttlSeconds: entry.decision.ttlSeconds,
+      reason: entry.decision.reason,
+    })),
+  };
 }
 
 async function writeClientReferenceManifestArtifacts(
@@ -557,7 +829,11 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
       distRoot: config.distRoot,
       manifest: boundaryAnalysis.clientReferenceManifest
     });
-    const routeGraphManifest = createRouteGraphManifest(manifest, "pending");
+    let clientReferenceManifestArtifacts = await writeClientReferenceManifestArtifacts(
+      config.distRoot,
+      boundaryAnalysis.clientReferenceManifest
+    );
+  const routeGraphManifest = createRouteGraphManifest(manifest, "pending");
 
   for (const routeEntry of clientArtifacts.routeEntries) {
     if (routeEntry.hydrationMode === "mixed-route") {
@@ -577,6 +853,22 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
 
   await fs.mkdir(config.distRoot, { recursive: true });
   await fs.mkdir(path.join(config.distRoot, "static"), { recursive: true });
+
+  const tunerSnapshotPath = path.join(config.distRoot, "tuner-snapshot.json");
+  const adosfTuner = new RuleBasedAdaptiveTuner();
+  await adosfTuner.loadSnapshot(tunerSnapshotPath);
+  const controlPlane = new HeuristicControlPlane(adosfTuner);
+  const controlPlaneRoutes = manifest.pages.map((route) => ({
+    id: route.id,
+    pathname: route.pathname,
+    kind: route.kind,
+    capabilities: route.capabilities
+  }));
+  const controlPlaneManifest = await controlPlane.toManifest(controlPlaneRoutes);
+  const controlPlaneDecisions = new Map(
+    controlPlaneManifest.entries.map((entry) => [entry.routeId, entry.decision] as const)
+  );
+  const consistencyGraphManifest = createConsistencyGraphManifestFromRouteGraph(routeGraphManifest);
 
   const prerendered: PrerenderRecord[] = [];
 
@@ -605,11 +897,10 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
       continue;
     }
 
-    const routeFileUrl = pathToFileURL(route.file).href;
-    if (!prerenderModuleCache.has(routeFileUrl)) {
-      prerenderModuleCache.set(routeFileUrl, await import(routeFileUrl));
+    if (!prerenderModuleCache.has(route.file)) {
+      prerenderModuleCache.set(route.file, await loadPrerenderModule(route.file));
     }
-    const routeModule = prerenderModuleCache.get(routeFileUrl) as {
+    const routeModule = prerenderModuleCache.get(route.file) as {
       generateStaticParams?: () => Promise<Array<Record<string, string | string[]>>> | Array<Record<string, string | string[]>>;
       revalidate?: number;
       cacheTTL?: number;
@@ -672,10 +963,7 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
         routeIdentity: routeMatch ?? undefined,
         parallelRoutes: routeMatch?.parallelRoutes
       });
-      const html = createDocumentHtml(rendered, context.locale, {
-        routeId: route.id,
-        clientAssets
-      });
+      const html = rendered.htmlShell ?? "";
       const safeSegments = pathnameValue.split("/").filter(Boolean);
       const relativePath = safeSegments.length === 0 ? path.join("static", "index.html") : path.join("static", ...safeSegments, "index.html");
       const outputPath = path.join(config.distRoot, relativePath);
@@ -725,6 +1013,10 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
   boundaryAnalysis.clientReferenceManifest.buildId = buildId;
   boundaryAnalysis.serverReferenceManifest.buildId = buildId;
   boundaryAnalysis.actionManifest.buildId = buildId;
+  clientReferenceManifestArtifacts = await writeClientReferenceManifestArtifacts(
+    config.distRoot,
+    boundaryAnalysis.clientReferenceManifest
+  );
   await writeJsonAtomically(
     path.join(config.distRoot, "client-manifest.json"),
     clientArtifacts
@@ -733,15 +1025,20 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
     version: SOURCEOG_MANIFEST_VERSION,
     buildId,
     generatedAt: new Date().toISOString(),
-    entries: manifest.pages.map((route) => ({
-      routeId: route.id,
-      pathname: route.pathname,
-      kind: route.kind,
-      runtime: "node",
-      dynamic: route.capabilities.includes("dynamic-only") ? "auto" : "force-static",
-      revalidate: prerendered.find((entry) => entry.routeId === route.id)?.revalidate,
-      prerendered: prerendered.some((entry) => entry.routeId === route.id)
-    }))
+    entries: manifest.pages.map((route) => {
+      const decision = controlPlaneDecisions.get(route.id);
+      return {
+        routeId: route.id,
+        pathname: route.pathname,
+        kind: route.kind,
+        runtime: decision?.runtimeTarget ?? "node",
+        dynamic: decision?.strategy === "stream"
+          ? "auto"
+          : route.capabilities.includes("dynamic-only") ? "auto" : "force-static",
+        revalidate: decision?.ttlSeconds ?? prerendered.find((entry) => entry.routeId === route.id)?.revalidate,
+        prerendered: prerendered.some((entry) => entry.routeId === route.id)
+      };
+    })
   };
   const bundleManifest: BundleManifest = createBundleManifestFromRoutes(manifest, clientArtifacts);
   bundleManifest.buildId = buildId;
@@ -819,6 +1116,14 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
   const rscReferenceManifestPath = path.join(config.distRoot, "rsc-reference-manifest.json");
   const serverReferenceManifestPath = path.join(config.distRoot, "server-reference-manifest.json");
   const actionManifestPath = path.join(config.distRoot, "action-manifest.json");
+  const controlPlaneManifestPath = path.join(config.distRoot, "control-plane-manifest.json");
+  const consistencyGraphManifestPath = path.join(config.distRoot, "consistency-graph.json");
+  const artifactSignatureManifestPath = path.join(config.distRoot, "artifact-signature-manifest.json");
+  const deploymentSignatureManifestPath = path.join(config.distRoot, "deployment-signature-manifest.json");
+  const doctorBaselineManifestPath = path.join(config.distRoot, "doctor-baseline-manifest.json");
+  const governanceAuditManifestPath = path.join(config.distRoot, "governance-audit-manifest.json");
+  const policyReplayManifestPath = path.join(config.distRoot, "policy-replay-manifest.json");
+  const releaseEvidenceIndexManifestPath = path.join(config.distRoot, "release-evidence-index.json");
 
   if (existsSync(path.join(cwd, "public"))) {
     await copyDirectory(path.join(cwd, "public"), path.join(config.distRoot, "public"));
@@ -828,10 +1133,6 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
   await writeJsonAtomically(routeGraphManifestPath, routeGraphManifest);
   await writeJsonAtomically(bundleManifestPath, bundleManifest);
   await writeJsonAtomically(routeOwnershipManifestPath, routeOwnershipManifest);
-  const clientReferenceManifestArtifacts = await writeClientReferenceManifestArtifacts(
-    config.distRoot,
-    boundaryAnalysis.clientReferenceManifest
-  );
   await writeJsonAtomically(clientBoundaryManifestPath, clientBoundaryManifest);
   await writeJsonAtomically(rscReferenceManifestPath, rscReferenceManifest);
   await writeJsonAtomically(serverReferenceManifestPath, boundaryAnalysis.serverReferenceManifest);
@@ -920,6 +1221,9 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
     { version: SOURCEOG_MANIFEST_VERSION, buildId, generatedAt: new Date().toISOString(), prerendered }
   );
   await writeJsonAtomically(cacheManifestPath, cacheManifest);
+  await writeJsonAtomically(controlPlaneManifestPath, controlPlaneManifest);
+  await writeJsonAtomically(consistencyGraphManifestPath, consistencyGraphManifest);
+  await adosfTuner.persistSnapshot(tunerSnapshotPath);
 
   // ---------------------------------------------------------------------------
   // Budget evaluation (Requirements 5.1–5.7, 11.1–11.5)
@@ -966,20 +1270,108 @@ export async function buildApplication(cwd: string): Promise<BuildResult> {
       diagnosticsManifest: diagnosticsManifestPath,
       prerenderManifest: prerenderManifestPath,
       cacheManifest: cacheManifestPath,
+      controlPlaneManifest: controlPlaneManifestPath,
+      consistencyGraphManifest: consistencyGraphManifestPath,
+      tunerSnapshotManifest: tunerSnapshotPath,
+      policyReplayManifest: policyReplayManifestPath,
       automationManifest: automationManifestPath,
       clientManifest: clientManifestPath,
       clientReferenceManifest: clientReferenceManifestArtifacts.serverPath,
       clientBoundaryManifest: clientBoundaryManifestPath,
       rscReferenceManifest: rscReferenceManifestPath,
       serverReferenceManifest: serverReferenceManifestPath,
-      actionManifest: actionManifestPath
+      actionManifest: actionManifestPath,
+      artifactSignatureManifest: artifactSignatureManifestPath,
+      deploymentSignatureManifest: deploymentSignatureManifestPath,
+      doctorBaselineManifest: doctorBaselineManifestPath,
+      governanceAuditManifest: governanceAuditManifestPath,
+      releaseEvidenceIndexManifest: releaseEvidenceIndexManifestPath,
     }
   };
 
+  const doctorBaselineManifest: DoctorBaselineManifest = {
+    version: SOURCEOG_MANIFEST_VERSION,
+    buildId,
+    generatedAt: new Date().toISOString(),
+    routeCount: deploymentManifest.routes.length,
+    pageRouteCount: manifest.pages.length,
+    handlerRouteCount: manifest.handlers.length,
+    prerenderedRouteCount: prerendered.length,
+    clientReferenceCount: boundaryAnalysis.clientReferenceManifest.entries.length,
+    actionCount: boundaryAnalysis.actionManifest.entries.length,
+    manifestNames: Object.keys(deploymentManifest.manifests).sort(),
+  };
+
+  await writeJsonAtomically(doctorBaselineManifestPath, doctorBaselineManifest);
+  const policyReplayManifest = createPolicyReplayManifest({
+    buildId,
+    controlPlaneManifestPath,
+    tunerSnapshotManifestPath: tunerSnapshotPath,
+    controlPlaneManifest,
+  });
+  await writeJsonAtomically(policyReplayManifestPath, policyReplayManifest);
+  const deploymentManifestPath = path.join(config.distRoot, "deployment-manifest.json");
+  await writeJsonAtomically(deploymentManifestPath, deploymentManifest);
+  const artifactSignatureManifest = await createArtifactSignatureManifest({
+    buildId,
+    distRoot: config.distRoot,
+    manifestPaths: {
+      ...Object.fromEntries(
+        Object.entries(deploymentManifest.manifests).filter(
+          ([name]) =>
+            name !== "artifactSignatureManifest" &&
+            name !== "deploymentSignatureManifest" &&
+            name !== "governanceAuditManifest" &&
+            name !== "releaseEvidenceIndexManifest",
+        ),
+      ),
+      deploymentManifest: deploymentManifestPath,
+    },
+  });
+  await writeJsonAtomically(artifactSignatureManifestPath, artifactSignatureManifest);
+  const deploymentSignatureManifest = createDeploymentSignatureManifest({
+    buildId,
+    deploymentManifestPath,
+    artifactSignatureManifestPath,
+    deploymentManifest,
+    artifactSignatureManifest,
+    selectedAdapter: adapterManifest.selectedAdapter,
+  });
   await writeJsonAtomically(
-    path.join(config.distRoot, "deployment-manifest.json"),
-    deploymentManifest
+    deploymentSignatureManifestPath,
+    deploymentSignatureManifest,
   );
+  const governanceAuditManifest = createGovernanceAuditManifest({
+    buildId,
+    deploymentManifestPath,
+    deploymentManifest,
+    routeGraphManifest,
+    routeOwnershipManifest,
+    cacheManifest,
+    actionManifest: boundaryAnalysis.actionManifest,
+    prerenderedCount: prerendered.length,
+    artifactSignatureManifestPath,
+    deploymentSignatureManifestPath,
+    doctorBaselineManifestPath,
+    policyReplayManifestPath,
+  });
+  await writeJsonAtomically(governanceAuditManifestPath, governanceAuditManifest);
+  await writeReleaseEvidenceIndex(releaseEvidenceIndexManifestPath, {
+    buildId,
+    governanceAuditManifest,
+    artifactSignatureManifest,
+    deploymentSignatureManifest,
+    doctorBaselineManifest,
+    policyReplayManifest,
+    artifactPaths: {
+      deploymentManifest: deploymentManifestPath,
+      artifactSignatureManifest: artifactSignatureManifestPath,
+      deploymentSignatureManifest: deploymentSignatureManifestPath,
+      doctorBaselineManifest: doctorBaselineManifestPath,
+      governanceAuditManifest: governanceAuditManifestPath,
+      policyReplayManifest: policyReplayManifestPath,
+    },
+  });
 
   if (budgetReport.passed) {
     await config.adapter?.deploy?.(

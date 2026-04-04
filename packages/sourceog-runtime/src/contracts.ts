@@ -2,6 +2,7 @@ export const SOURCEOG_MANIFEST_VERSION = "2027.1";
 
 export type StabilityLevel = "stable" | "experimental" | "internal";
 export type DiagnosticLevel = "info" | "warn" | "error";
+export type ArtifactMode = "strict" | "dev-compiled" | "test-harness";
 
 export interface DiagnosticIssue {
   level: DiagnosticLevel;
@@ -51,6 +52,7 @@ export interface RouteGraphNode {
     | "loading"
     | "error"
     | "not-found"
+    | "default"
     | "route";
   parentId?: string;
   routeId?: string;
@@ -93,14 +95,14 @@ export interface RouteGraphManifest {
 export interface ClientBoundaryDescriptor {
   boundaryId: string;
   routeId: string;
-  moduleId: string;
-  exportName: string;
-  filePath: string;
-  selector: string;
+  moduleId?: string;
+  exportName?: string;
+  filePath?: string;
+  selector?: string;
   propsEncoding?: "uri-json";
   assetFilePath?: string;
   assetHref?: string;
-  bootstrapStrategy: "hydrate-root" | "hydrate-island";
+  bootstrapStrategy?: "hydrate-root" | "hydrate-island";
 }
 
 export interface ClientBoundaryManifestEntry {
@@ -406,19 +408,239 @@ export interface DeploymentManifest {
     renderManifest: string;
     bundleManifest: string;
     routeOwnershipManifest: string;
-      assetManifest: string;
-      adapterManifest: string;
-      diagnosticsManifest: string;
-      prerenderManifest: string;
-      cacheManifest: string;
-      automationManifest: string;
-      clientManifest: string;
-      clientReferenceManifest: string;
+    assetManifest: string;
+    adapterManifest: string;
+    diagnosticsManifest: string;
+    prerenderManifest: string;
+    cacheManifest: string;
+    controlPlaneManifest?: string;
+    consistencyGraphManifest?: string;
+    tunerSnapshotManifest?: string;
+    policyReplayManifest?: string;
+    automationManifest: string;
+    clientManifest: string;
+    clientReferenceManifest: string;
     clientBoundaryManifest: string;
     rscReferenceManifest: string;
     serverReferenceManifest: string;
     actionManifest: string;
+    artifactSignatureManifest?: string;
+    deploymentSignatureManifest?: string;
+    doctorBaselineManifest?: string;
+    governanceAuditManifest?: string;
+    releaseEvidenceIndexManifest?: string;
   };
+}
+
+export interface ArtifactSignatureManifestEntry {
+  kind: string;
+  filePath: string;
+  sha256: string;
+  bytes: number;
+}
+
+export interface ArtifactSignatureManifest {
+  version: string;
+  buildId: string;
+  generatedAt: string;
+  signatures: {
+    compiler: string;
+    runtime: string;
+    deployment: string;
+  };
+  artifacts: ArtifactSignatureManifestEntry[];
+}
+
+export interface DeploymentSignatureManifest {
+  version: string;
+  buildId: string;
+  generatedAt: string;
+  artifactSignatureManifestPath: string;
+  deploymentManifestPath: string;
+  runtimeFingerprint: string;
+  selectedAdapter: string;
+  routeCount: number;
+  manifestCount: number;
+  signatures: {
+    compiler: string;
+    runtime: string;
+    deployment: string;
+  };
+}
+
+export interface DoctorBaselineManifest {
+  version: string;
+  buildId: string;
+  generatedAt: string;
+  routeCount: number;
+  pageRouteCount: number;
+  handlerRouteCount: number;
+  prerenderedRouteCount: number;
+  clientReferenceCount: number;
+  actionCount: number;
+  manifestNames: string[];
+}
+
+export interface PolicyReplayManifest {
+  version: string;
+  buildId: string;
+  generatedAt: string;
+  objective: "latency" | "throughput" | "cost" | "stability";
+  reducerPhases: string[];
+  loopNames: string[];
+  controlPlaneManifestPath: string;
+  tunerSnapshotManifestPath: string;
+  routeDecisions: Array<{
+    routeId: string;
+    pathname: string;
+    strategy: string;
+    runtimeTarget: string;
+    queuePriority: string;
+    ttlSeconds: number | null;
+    reason: string;
+  }>;
+}
+
+export interface GovernanceAuditManifest {
+  version: string;
+  buildId: string;
+  generatedAt: string;
+  packageContract: {
+    publicPackage: "sourceog";
+    internalPackagesRemainPrivate: true;
+  };
+  runtimeContract: {
+    artifactOnlyProduction: true;
+    sourceProbingDisallowed: true;
+    transpilerFallbackDisallowed: true;
+  };
+  laws: {
+    doctorLaw: true;
+    replayLaw: true;
+    policyLaw: true;
+    runtimeLaw: true;
+    governanceLaw: true;
+  };
+  decisions: {
+    routeCount: number;
+    prerenderedRouteCount: number;
+    cacheEntryCount: number;
+    invalidationLinkCount: number;
+    graphNodeCount: number;
+    graphRouteCount: number;
+    ownershipEntryCount: number;
+    actionCount: number;
+  };
+  artifactPaths: {
+    routeOwnershipManifest: string;
+    cacheManifest: string;
+    routeGraphManifest: string;
+    artifactSignatureManifest: string;
+    deploymentSignatureManifest: string;
+    doctorBaselineManifest: string;
+    policyReplayManifest?: string;
+    deploymentManifest: string;
+  };
+}
+
+export type SupportClassification = "stable" | "preview" | "internal";
+
+export interface SupportMatrixEntryEvidence {
+  packageExported: boolean;
+  runtimeImplemented: boolean;
+  hasTypes: boolean;
+  docsCovered: boolean;
+  testsCovered: boolean;
+  docRefs: string[];
+  testRefs: string[];
+}
+
+export interface SupportMatrixEntry {
+  id: string;
+  kind: "subpath" | "api";
+  source: string;
+  exportName?: string;
+  sourceFile?: string;
+  status: SupportClassification;
+  notes: string[];
+  evidence: SupportMatrixEntryEvidence;
+}
+
+export interface SupportMatrixSummary {
+  total: number;
+  stable: number;
+  preview: number;
+  internal: number;
+}
+
+export interface SupportMatrix {
+  version: string;
+  buildId: string;
+  generatedAt: string;
+  summary: SupportMatrixSummary;
+  entries: SupportMatrixEntry[];
+}
+
+export interface ReleaseEvidenceIndex {
+  version: string;
+  buildId: string;
+  generatedAt: string;
+  packageContract: GovernanceAuditManifest["packageContract"];
+  runtimeContract: GovernanceAuditManifest["runtimeContract"];
+  laws: GovernanceAuditManifest["laws"];
+  decisionCounts: GovernanceAuditManifest["decisions"];
+  selectedAdapter?: string;
+  runtimeFingerprint?: string;
+  signatures?: ArtifactSignatureManifest["signatures"];
+  artifacts: {
+    deploymentManifest: string;
+    artifactSignatureManifest?: string;
+    deploymentSignatureManifest?: string;
+    doctorBaselineManifest?: string;
+    governanceAuditManifest?: string;
+    policyReplayManifest?: string;
+    doctorReport?: string;
+    doctorRemediation?: string;
+    parityScoreboard?: string;
+    milestoneDashboard?: string;
+    supportMatrix?: string;
+    benchmarkReport?: string;
+    publishReadiness?: string;
+    auditFindings?: string;
+    packageGovernance?: string;
+  };
+  completeness: {
+    requiredForBuild: string[];
+    requiredForRelease: string[];
+    present: string[];
+    missingForBuild: string[];
+    missingForRelease: string[];
+    doctorPresent: boolean;
+    verificationPresent: boolean;
+    supportMatrixPresent: boolean;
+    benchmarkProofPresent: boolean;
+    publishReadinessPresent: boolean;
+  };
+}
+
+export interface ExecutionPlan {
+  buildId?: string;
+  routeId?: string;
+  pathname?: string;
+  requestId?: string;
+  runtime: "node" | "edge" | "auto";
+  artifactMode: ArtifactMode;
+  decisionWindow: number;
+  capabilities: string[];
+  reasons: string[];
+}
+
+export interface DecisionTrace {
+  generatedAt: string;
+  plan: ExecutionPlan;
+  reducerPhases: string[];
+  overrides: string[];
+  confidence: number;
 }
 
 export interface ClientReferenceManifestEntry {

@@ -12,6 +12,7 @@ export type PrerenderPolicy = "auto" | "force-static" | "force-dynamic";
 export interface RevalidationHandler {
   revalidatePath(pathname: string): Promise<void>;
   revalidateTag(tag: string): Promise<void>;
+  invalidateResource?(resourceId: string, scope?: "server" | "client" | "both"): Promise<void>;
   applyResolvedInvalidation?(resolved: ResolvedCacheInvalidation): Promise<void>;
 }
 
@@ -130,6 +131,30 @@ export async function revalidateTag(tag: string): Promise<void> {
     routeIds: resolved.routeIds,
     cacheKeys: resolved.cacheKeys
   });
+}
+
+export async function invalidateResource(
+  resourceId: string,
+  scope: "server" | "client" | "both" = "both"
+): Promise<void> {
+  if (!revalidationHandler) {
+    throw new SourceOGError(
+      SOURCEOG_ERROR_CODES.RUNTIME_INCOMPATIBLE,
+      "No SourceOG revalidation handler is registered in the current runtime."
+    );
+  }
+
+  if (revalidationHandler.invalidateResource) {
+    await revalidationHandler.invalidateResource(resourceId, scope);
+    return;
+  }
+
+  if (resourceId.startsWith("route:")) {
+    await revalidatePath(resourceId.slice("route:".length) || "/");
+    return;
+  }
+
+  await revalidateTag(resourceId);
 }
 
 export async function withRevalidationTracking<T>(

@@ -2,9 +2,15 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import type { CacheStore } from "./cache.js";
-import type { CacheManifest } from "./contracts.js";
+import type { CacheManifest, DecisionTrace, ExecutionPlan } from "./contracts.js";
 
-export type SourceOGRuntimeName = "node" | "cloudflare" | "vercel-node" | "vercel-edge";
+export type SourceOGRuntimeName =
+  | "node"
+  | "edge"
+  | "cloudflare"
+  | "vercel-node"
+  | "vercel-edge"
+  | "deno";
 
 export interface SourceOGRequestMemoizationState {
   entries: Map<string, Promise<unknown>>;
@@ -15,6 +21,8 @@ export interface SourceOGRequestRuntimeState {
   dataCacheStore?: CacheStore;
   buildId?: string;
   cacheManifest?: CacheManifest;
+  executionPlan?: ExecutionPlan;
+  decisionTrace?: DecisionTrace;
 }
 
 export interface SourceOGRequest {

@@ -1,23 +1,151 @@
 {
   "name": "sourceog",
   "version": "0.1.0",
+  "description": "SourceOG application framework and CLI",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "sourceog": "./dist/bin.js"
+  },
   "exports": {
-    ".": "./src/index.ts",
-    "./actions": "./src/actions.ts",
-    "./auth": "./src/auth.ts",
-    "./client-island": "./src/client-island.ts",
-    "./i18n": "./src/i18n.ts",
-    "./image": "./src/image.ts",
-    "./platform": "./src/platform.ts",
-    "./validation": "./src/validation.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./actions": {
+      "types": "./dist/actions.d.ts",
+      "import": "./dist/actions.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    },
+    "./automation": {
+      "types": "./dist/automation.d.ts",
+      "import": "./dist/automation.js"
+    },
+    "./cache": {
+      "types": "./dist/cache.d.ts",
+      "import": "./dist/cache.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./client-island": {
+      "types": "./dist/client-island.d.ts",
+      "import": "./dist/client-island.js"
+    },
+    "./doctor": {
+      "types": "./dist/doctor.d.ts",
+      "import": "./dist/doctor.js"
+    },
+    "./explain": {
+      "types": "./dist/explain.d.ts",
+      "import": "./dist/explain.js"
+    },
+    "./graph": {
+      "types": "./dist/graph.d.ts",
+      "import": "./dist/graph.js"
+    },
+    "./headers": {
+      "types": "./dist/headers.d.ts",
+      "import": "./dist/headers.js"
+    },
+    "./governance": {
+      "types": "./dist/governance.d.ts",
+      "import": "./dist/governance.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n.d.ts",
+      "import": "./dist/i18n.js"
+    },
+    "./image": {
+      "types": "./dist/image.d.ts",
+      "import": "./dist/image.js"
+    },
+    "./inspect": {
+      "types": "./dist/inspect.d.ts",
+      "import": "./dist/inspect.js"
+    },
+    "./navigation": {
+      "types": "./dist/navigation.d.ts",
+      "import": "./dist/navigation.js"
+    },
+    "./platform": {
+      "types": "./dist/platform.d.ts",
+      "import": "./dist/platform.js"
+    },
+    "./policies": {
+      "types": "./dist/policies.d.ts",
+      "import": "./dist/policies.js"
+    },
+    "./request": {
+      "types": "./dist/request.d.ts",
+      "import": "./dist/request.js"
+    },
+    "./replay": {
+      "types": "./dist/replay.d.ts",
+      "import": "./dist/replay.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    },
+    "./validation": {
+      "types": "./dist/validation.d.ts",
+      "import": "./dist/validation.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "prepack": "node ./scripts/build.mjs"
   },
   "dependencies": {
+    "chokidar": "^4.0.3",
+    "dotenv": "^16.4.7",
+    "esbuild": "^0.25.2",
+    "jose": "^5.9.6",
+    "react-server-dom-webpack": "19.1.1",
+    "ws": "^8.18.1",
+    "zod": "^3.24.2"
+  },
+  "peerDependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@sourceog/adapter-cloudflare": "workspace:*",
+    "@sourceog/adapter-node": "workspace:*",
+    "@sourceog/adapter-vercel-edge": "workspace:*",
+    "@sourceog/adapter-vercel-node": "workspace:*",
+    "@sourceog/compiler": "workspace:*",
     "@sourceog/platform": "workspace:*",
-    "@sourceog/runtime": "workspace:*",
-    "@sourceog/router": "workspace:*",
     "@sourceog/renderer": "workspace:*",
-    "@sourceog/server": "workspace:*"
+    "@sourceog/router": "workspace:*",
+    "@sourceog/runtime": "workspace:*",
+    "@sourceog/server": "workspace:*",
+    "@sourceog/testing": "workspace:*",
+    "@types/node": "^22.13.11",
+    "typescript": "^5.8.2"
   }
 }
