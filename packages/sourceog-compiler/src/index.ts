@@ -66,11 +66,24 @@ function hashFile(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
 
+/**
+ * Generates a stable module ID based on the absolute file path and current working directory.
+ *
+ * @param absolutePath The absolute path to the module file.
+ * @param cwd The current working directory to relativize the module path.
+ * @returns A 16-character SHA-256 hash digest of the module's relative path.
+ */
 function stableModuleId(absolutePath: string, cwd: string): string {
   const rel = path.relative(cwd, absolutePath).replaceAll(path.sep, "/");
   return createHash("sha256").update(rel).digest("hex").slice(0, 16);
 }
 
+/**
+ * Ensures that the specified directory exists by creating it and any necessary subdirectories.
+ *
+ * @param dir - The directory path to ensure exists.
+ * @returns A promise that resolves when the directory has been created or already exists.
+ */
 async function ensureDir(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true });
 }
@@ -117,6 +130,13 @@ function walkFiles(
 
 const SOURCE_EXTENSIONS = new Set([".tsx", ".ts", ".jsx", ".js", ".mjs"]);
 
+/**
+ * Determines whether the given file path refers to a source file
+ * by checking its extension against the set of source extensions.
+ *
+ * @param filePath - the path to the file to check
+ * @returns true if the file has a source extension, false otherwise
+ */
 function isSourceFile(filePath: string): boolean {
   return SOURCE_EXTENSIONS.has(path.extname(filePath));
 }
@@ -169,6 +189,12 @@ async function _buildClientReferenceRegistry(
   return registry;
 }
 
+/**
+ * Parses the given module content string and extracts all exported identifiers.
+ *
+ * @param content - The source code content to analyze.
+ * @returns An array of exported names found in the content.
+ */
 function extractExportNames(content: string): string[] {
   const names = new Set<string>();
 

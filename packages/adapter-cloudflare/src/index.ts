@@ -79,12 +79,26 @@ const CF_SUPPORTED_FEATURES = new Set([
 
 const CF_UNSUPPORTED_FEATURES = new Set(["filesystem", "isr"]);
 
+/**
+ * Resolves the deployment root directory for a given adapter based on the provided configuration.
+ *
+ * @param config - The source configuration containing optional distRoot, distDir, and cwd properties.
+ * @param adapterName - The name of the adapter for which to resolve the deploy directory.
+ * @returns The absolute path to the deploy directory for the adapter.
+ */
 function resolveDeployRoot(config: SourceOGConfig, adapterName: string): string {
   const c = config as SourceOGConfig & { distRoot?: string; distDir?: string; cwd?: string };
   const base = c.distRoot ?? path.resolve(c.cwd ?? process.cwd(), c.distDir ?? ".sourceog");
   return path.join(base, "deploy", adapterName);
 }
 
+/**
+ * Copies deployment manifest files to the specified deployment root directory.
+ *
+ * @param manifestPaths - An object mapping manifest names to their file paths. If undefined, the function returns without performing any actions.
+ * @param deployRoot - The root directory where manifest files will be copied under the "manifests" subdirectory.
+ * @returns A promise that resolves when all manifest files have been copied.
+ */
 async function copyDeploymentManifests(
   manifestPaths: Record<string, string> | undefined,
   deployRoot: string
@@ -97,6 +111,12 @@ async function copyDeploymentManifests(
   }
 }
 
+/**
+ * Extracts geographic data from Cloudflare properties.
+ *
+ * @param cf - The Cloudflare incoming CF properties object or undefined.
+ * @returns A GeoData object containing any available country, region, city, latitude, and longitude; otherwise undefined.
+ */
 function extractGeoData(cf: CloudflareIncomingCfProperties | undefined): GeoData | undefined {
   if (!cf) return undefined;
   const geo: GeoData = {};
@@ -108,6 +128,12 @@ function extractGeoData(cf: CloudflareIncomingCfProperties | undefined): GeoData
   return Object.keys(geo).length > 0 ? geo : undefined;
 }
 
+/**
+ * Normalizes a Cloudflare request into the adapter's request format.
+ *
+ * @param req - The incoming CloudflareRequest to normalize.
+ * @returns AdapterSourceOGRequest - The normalized request suitable for the adapter.
+ */
 function normalizeCloudflareRequest(req: CloudflareRequest): AdapterSourceOGRequest {
   const url = new URL(req.url);
   const headers = createMutableHeaders(req.headers);
@@ -128,13 +154,20 @@ function normalizeCloudflareRequest(req: CloudflareRequest): AdapterSourceOGRequ
   };
 }
 
+/**
+ * Creates a default request handler based on the provided deployment manifest.
+ *
+ * @param manifest DeploymentManifest object containing route definitions.
+ * @returns A request handler function that takes a request and returns a promise
+ *          resolving to an AdapterSourceOGResponse.
+ */
 function createDefaultHandler(manifest: DeploymentManifest): (req: AdapterSourceOGRequest) => Promise<AdapterSourceOGResponse> {
   return async (req) => {
     const headers = createMutableHeaders();
     const cookies = createMutableCookies(new Map());
     const matchedRoute = manifest.routes.find((r: { pathname: string }) => {
       try {
-        return new RegExp(`^${r.pathname.replace(/\[([^\]]+)\]/g, "[^/]+")}$`).test(req.url.pathname);
+        return new RegExp(`^${r.pathname.replace(/\[([^\]]+)\]/g, "[^/]+")}\$`).test(req.url.pathname);
       } catch { return r.pathname === req.url.pathname; }
     });
     if (!matchedRoute) return { status: 404, headers, cookies, body: "Not Found" };
@@ -149,6 +182,11 @@ function createDefaultHandler(manifest: DeploymentManifest): (req: AdapterSource
 class CloudflareAdapter implements SourceOGAdapter {
   public readonly name = "cloudflare";
 
+  /**
+   * Checks which features from the given RuntimeCapabilities are supported or unsupported.
+   * @param features The runtime capabilities to check for feature support.
+   * @returns A CapabilityReport object containing supported, unsupported features and warnings.
+   */
   checkCapabilities(features: RuntimeCapabilities): CapabilityReport {
     const supported: string[] = [], unsupported: string[] = [], warnings: string[] = [];
     for (const feature of features.features) {
@@ -159,6 +197,14 @@ class CloudflareAdapter implements SourceOGAdapter {
     return { supported, unsupported, warnings };
   }
 
+  /**
+   * Deploys the build artifacts and manifest to the target environment.
+   *
+   * @param manifest - The deployment manifest containing build details and metadata.
+   * @param artifacts - The build artifacts including manifest paths and build identifiers.
+   * @param config - Configuration for SourceOG deployment.
+   * @returns A promise that resolves when deployment is complete.
+   */
   async deploy(manifest: DeploymentManifest, artifacts: BuildArtifacts, config: SourceOGConfig): Promise<void> {
     const deployRoot = resolveDeployRoot(config, this.name);
     await fs.mkdir(deployRoot, { recursive: true });
@@ -180,6 +226,11 @@ class CloudflareAdapter implements SourceOGAdapter {
     );
   }
 
+  /**
+   * Creates a Cloudflare request handler using the given deployment manifest.
+   * @param manifest - The deployment manifest containing route and resource information.
+   * @returns A CloudflareRequestHandler that handles incoming requests and returns a Response.
+   */
   createRequestHandler(manifest: DeploymentManifest): CloudflareRequestHandler {
     const defaultHandler = createDefaultHandler(manifest);
     return async (req: Request, _env: Env, _ctx: ExecutionContext): Promise<Response> => {
@@ -191,5 +242,10 @@ class CloudflareAdapter implements SourceOGAdapter {
 }
 
 export const cloudflareAdapter: SourceOGAdapter = new CloudflareAdapter();
+/**
+ * Creates a new CloudflareAdapter instance.
+ *
+ * @returns {SourceOGAdapter} A new instance of CloudflareAdapter.
+ */
 export function createCloudflareAdapter(): SourceOGAdapter { return new CloudflareAdapter(); }
 export default cloudflareAdapter;

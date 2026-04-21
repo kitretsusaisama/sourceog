@@ -53,6 +53,14 @@ const styles = {
   cardText: {}
 };
 
+/**
+ * Displays a feature card with a title and description.
+ *
+ * @param {object} props - The properties for the FeatureCard component.
+ * @param {string} props.title - The card title.
+ * @param {string} props.description - The card description.
+ * @returns {React.JSX.Element} The JSX element for the feature card.
+ */
 function FeatureCard({ 
   title, 
   description 
