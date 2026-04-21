@@ -1,3 +1,0 @@
-packages/sourceog-server/src/server.ts
-packages/sourceog-compiler/src/boundary.ts
-packages/sourceog-compiler/src/build.ts
