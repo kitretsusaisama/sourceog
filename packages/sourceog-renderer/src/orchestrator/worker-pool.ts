@@ -204,20 +204,17 @@ export class WorkerPool {
     return new Promise<WorkerRenderResponse>((resolve, reject) => {
       const requestId = `rsc-${(this.requestCounter++).toString(36)}`;
 
-      const queued = this.queue.add(route);
-      const queueTimeout = setTimeout(() => {
-        // On queue timeout, attempt removal and reject.
-        if (queued.node) {
-          this.queue.remove(queued);
-        }
-        reject(new WorkerQueueTimeoutError(route.id, this.queueTimeoutMs));
-      }, this.queueTimeoutMs);
       const queued: QueuedRenderRequest = {
         requestId,
         payload,
         resolve,
         reject,
-        queueTimeout,
+        queueTimeout: setTimeout(() => {
+          if (queued.node) {
+            this.queue.remove(queued);
+          }
+          reject(new WorkerQueueTimeoutError(payload.routeId, this.queueTimeoutMs));
+        }, this.queueTimeoutMs),
         renderTimeoutMs: payload.timeoutMs ?? this.workerTimeoutMs,
         onChunk: options.onChunk,
         collectChunks: options.collectChunks ?? false,

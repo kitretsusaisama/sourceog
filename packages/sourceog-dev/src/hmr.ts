@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import chokidar, { type FSWatcher } from "chokidar";
 import type { Server as HttpServer } from "node:http";
 import { WebSocketServer } from "ws";

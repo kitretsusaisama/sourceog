@@ -136,6 +136,7 @@ async function loadWithInlineTransform(fsPath) {
     const tsconfig = findNearestTsconfig(fsPath);
     const result = await esbuild.build({
       absWorkingDir: process.cwd(),
+      format: "esm",
       bundle: true,
       conditions: ["react-server"],
       entryPoints: [fsPath],

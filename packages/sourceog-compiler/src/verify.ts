@@ -1200,7 +1200,6 @@ function createParityScoreboard(
     }
   };
 }
-}
 
 function createMilestoneDashboard(
   buildResult: BuildResult,

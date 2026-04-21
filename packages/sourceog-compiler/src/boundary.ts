@@ -1,4 +1,8 @@
+import { createHash } from "node:crypto";
+import path from "node:path";
+import { promises as fs } from "node:fs";
 import type { ClientReferenceManifestEntry } from "@sourceog/runtime";
+import { CONTRACTS_MANIFEST_VERSION } from "@sourceog/runtime";
 
 interface ClientReferenceManifestRegistryEntry {
   id: string;

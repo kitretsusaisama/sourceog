@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import { PassThrough, Readable } from "node:stream";
 import { pathToFileURL } from "node:url";

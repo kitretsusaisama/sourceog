@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createReadStream, existsSync, promises as fs } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
@@ -365,10 +366,6 @@ function resolvePreferredPort(config: ResolvedSourceOGConfig, options: SourceOGS
 
 async function listenOnce(server: Server, port: number): Promise<number> {
   await new Promise<void>((resolve, reject) => {
-    const onError = (error) => {
-      reject(error);
-    };
-
     const onListening = () => {
       server.off("error", onError);
       resolve();
